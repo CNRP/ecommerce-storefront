@@ -45,23 +45,7 @@ A modern, full-featured e-commerce platform built with Laravel, featuring compre
 - **Stripe API**: Secure payment processing with webhook support
 - **Session Management**: Robust cart and user session handling
 - **Database Design**: Optimized schema for e-commerce operations
-
-## Technology Stack
-
-- **Backend**: Laravel 11, PHP 8.2+
-- **Frontend**: Blade Templates, Alpine.js, Tailwind CSS
-- **Database**: MySQL/PostgreSQL
-- **Payment**: Stripe API with webhooks
-- **Admin Panel**: Filament v3
-- **Deployment**: Ready for modern hosting platforms
-
-## Key Highlights
-
-- **Production-ready**: Comprehensive error handling and logging
-- **Scalable Architecture**: Modular service-based design
-- **Security-focused**: CSRF protection, payment security, and data validation
-- **Developer Experience**: Clean codebase with proper separation of concerns
-- **Performance Optimized**: Efficient database queries and caching strategies
+  
 
 ## Installation
 
