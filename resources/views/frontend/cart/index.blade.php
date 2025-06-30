@@ -4,21 +4,21 @@
 @section('title', 'Shopping Cart - ' . config('app.name'))
 
 @section('content')
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div x-data class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 class="text-3xl font-bold text-gray-900 mb-8">Shopping Cart</h1>
 
-        @if ($cart->count() > 0)
+        <template x-if="$store.cart.items.length > 0">
             <div class="bg-white rounded-lg shadow-sm border border-gray-300 overflow-hidden">
                 <!-- Cart Items -->
                 <div class="divide-y divide-gray-200">
-                    @foreach ($cart as $key => $item)
+                    <template x-for="item in $store.cart.items" :key="item.key">
                         <div class="p-6 flex items-center space-x-4">
                             <!-- Product Image -->
                             <div class="flex-shrink-0 w-20 h-20 bg-gray-200 rounded-lg overflow-hidden">
-                                @if ($item['image'])
-                                    <img src="{{ Storage::url($item['image']) }}" alt="{{ $item['name'] }}"
-                                        class="w-full h-full object-cover">
-                                @else
+                                <template x-if="item.image">
+                                    <img :src="item.image" :alt="item.name" class="w-full h-full object-cover">
+                                </template>
+                                <template x-if="!item.image">
                                     <div class="w-full h-full flex items-center justify-center">
                                         <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor"
                                             viewBox="0 0 24 24">
@@ -27,30 +27,31 @@
                                             </path>
                                         </svg>
                                     </div>
-                                @endif
+                                </template>
                             </div>
 
                             <!-- Product Details -->
                             <div class="flex-1">
-                                <h3 class="font-medium text-gray-900">{{ $item['name'] }}</h3>
-                                <p class="text-gray-600">${{ number_format($item['price'], 2) }}</p>
+                                <h3 class="font-medium text-gray-900" x-text="item.name"></h3>
+                                <p class="text-gray-600" x-text="'$' + item.price.toFixed(2)"></p>
                             </div>
 
                             <!-- Quantity Controls -->
                             <div class="flex items-center space-x-2">
-                                <button onclick="updateQuantity('{{ $key }}', {{ $item['quantity'] - 1 }})"
-                                    class="w-8 h-8 flex items-center justify-center border border-gray-300 rounded hover:bg-gray-50"
-                                    {{ $item['quantity'] <= 1 ? 'disabled' : '' }}>
+                                <button @click="$store.cart.updateQuantity(item.key, item.quantity - 1)"
+                                    :disabled="item.quantity <= 1"
+                                    class="w-8 h-8 flex items-center justify-center border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4">
                                         </path>
                                     </svg>
                                 </button>
 
-                                <span class="w-12 text-center font-medium">{{ $item['quantity'] }}</span>
+                                <span class="w-12 text-center font-medium" x-text="item.quantity"></span>
 
-                                <button onclick="updateQuantity('{{ $key }}', {{ $item['quantity'] + 1 }})"
-                                    class="w-8 h-8 flex items-center justify-center border border-gray-300 rounded hover:bg-gray-50">
+                                <button @click="$store.cart.updateQuantity(item.key, item.quantity + 1)"
+                                    :disabled="item.quantity >= 10"
+                                    class="w-8 h-8 flex items-center justify-center border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -60,36 +61,41 @@
 
                             <!-- Item Total -->
                             <div class="text-right">
-                                <p class="font-medium text-gray-900">
-                                    ${{ number_format($item['price'] * $item['quantity'], 2) }}</p>
-                                <button onclick="removeItem('{{ $key }}')"
+                                <p class="font-medium text-gray-900" x-text="'$' + (item.price * item.quantity).toFixed(2)">
+                                </p>
+                                <button @click="$store.cart.removeItem(item.key)"
                                     class="text-red-600 hover:text-red-700 text-sm mt-1">
                                     Remove
                                 </button>
                             </div>
                         </div>
-                    @endforeach
+                    </template>
                 </div>
 
                 <!-- Cart Summary -->
                 <div class="bg-gray-50 p-6">
                     <div class="flex justify-between items-center text-lg font-medium text-gray-900 mb-4">
                         <span>Total</span>
-                        <span>${{ number_format($total->value, 2) }}</span>
+                        <span x-text="$store.cart.formattedTotal"></span>
                     </div>
 
-                    <div class="space-y-3">
-                        <button class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium">
+                    <div class="space-y-3 flex flex-col">
+                        <a href="{{ route('checkout.index') }}"
+                            class="block w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-500 font-medium text-center"
+                            @click="$store.cart.close()">
                             Proceed to Checkout
-                        </button>
+                        </a>
                         <a href="{{ route('products.index') }}"
-                            class="block w-full bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 font-medium text-center">
+                            class="block w-full bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 font-medium text-center"
+                            @click="$store.cart.close()">
                             Continue Shopping
                         </a>
                     </div>
                 </div>
             </div>
-        @else
+        </template>
+
+        <template x-if="$store.cart.items.length === 0">
             <div class="text-center py-12">
                 <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                     <path
@@ -103,44 +109,6 @@
                     Start Shopping
                 </a>
             </div>
-        @endif
+        </template>
     </div>
-
-    <script>
-        function updateQuantity(key, quantity) {
-            if (quantity < 1) return;
-
-            fetch(`/cart/${key}`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        quantity: quantity
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload(); // Simple reload for now
-                    }
-                });
-        }
-
-        function removeItem(key) {
-            fetch(`/cart/${key}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    }
-                });
-        }
-    </script>
 @endsection

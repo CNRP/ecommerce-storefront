@@ -23,11 +23,12 @@
       }
     },
     "include": [
-      "app/Models/**",
-      "app/Http/Controllers/**",
-      "app/Services/**",
-      "resources/views/frontend/**",
-      "database/seeders/**"
+      "resources/views/components/**",
+      "resources/views/components/cart/**",
+      "app/View/**",
+      "resources/views/layouts/**",
+      "resources/js/stores"
+
     ],
     "ignore": {
       "useGitignore": true,

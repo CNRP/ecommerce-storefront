@@ -28,10 +28,13 @@ Route::get('/categories/{category:slug}', [CategoryController::class, 'show'])->
 
 // Cart
 Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
-Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
-Route::patch('/cart/{key}', [CartController::class, 'update'])->name('cart.update');
-Route::delete('/cart/{key}', [CartController::class, 'remove'])->name('cart.remove');
 
+Route::prefix('api/cart')->name('api.cart.')->group(function () {
+    Route::get('/data', [CartController::class, 'get'])->name('get');  // Changed to /data
+    Route::post('/add', [CartController::class, 'add'])->name('add');
+    Route::patch('/{key}', [CartController::class, 'update'])->name('update');
+    Route::delete('/{key}', [CartController::class, 'remove'])->name('remove');
+});
 Route::middleware('guest')->group(function () {
     // Login routes
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');

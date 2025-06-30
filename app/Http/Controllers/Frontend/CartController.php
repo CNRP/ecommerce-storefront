@@ -26,6 +26,25 @@ class CartController extends Controller
         return view('frontend.cart.index', compact('cart', 'total'));
     }
 
+    public function get(): JsonResponse
+    {
+        $cart = $this->cartService->getCart();
+
+        $items = $cart->map(function ($item, $key) {
+            $item['key'] = $key; // Attach the session key used in storage
+
+            return $item;
+        })->values(); // Reset numeric keys for clean JSON, but retain `key` field
+
+        return response()->json([
+            'success' => true,
+            'items' => $items,
+            'count' => $this->cartService->getItemCount(),
+            'total' => $this->cartService->getTotal()->value,
+            'formatted_total' => '$'.number_format($this->cartService->getTotal()->value, 2),
+        ]);
+    }
+
     public function add(Request $request): JsonResponse
     {
         $request->validate([

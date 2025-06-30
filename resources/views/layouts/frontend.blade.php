@@ -1,4 +1,3 @@
-{{-- resources/views/layouts/frontend.blade.php --}}
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
@@ -62,19 +61,9 @@
     @stack('head')
 </head>
 
-<body class="bg-gray-50 min-h-screen flex flex-col" x-data="{ cartOpen: false, mobileMenuOpen: false }">
-    <!-- Toast Notification System -->
-    <div id="toast"
-        class="fixed bottom-4 left-1/2 transform -translate-x-1/2 translate-y-32 z-50 transition-all duration-300 ease-in-out">
-        <div class="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max">
-            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-            </svg>
-            <span id="toast-message">Success!</span>
-        </div>
-    </div>
+<body class="bg-gray-50 min-h-screen flex flex-col" x-data="{ mobileMenuOpen: false }">
 
-    <!-- Success/Error Messages -->
+    <!-- Success/Error Flash Messages -->
     @if (session('success'))
         <div class="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg"
             x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)">
@@ -111,247 +100,90 @@
     <!-- Footer -->
     @include('components.footer')
 
-    <!-- Cart Sidebar -->
-    @include('frontend.cart.sidebar')
+    <!-- Global Components -->
+    <x-cart.cart-sidebar />
+    <x-ui.toast-container />
 
-    <!-- JavaScript -->
+    <!-- Load Cart Store JavaScript -->
+    @vite(['resources/js/stores/cart.js'])
+
+    <!-- Minimal Global JavaScript -->
+    <!-- Complete Cart Store JavaScript (inline) -->
     <script>
-        // Global JavaScript Configuration
-        window.Laravel = {
-            csrfToken: '{{ csrf_token() }}',
-            routes: {
-                cartAdd: '{{ route('cart.add') }}',
-                cartUpdate: '{{ route('cart.update', ':key') }}',
-                cartRemove: '{{ route('cart.remove', ':key') }}'
-            }
-        };
+        function toastContainer() {
+            return {
+                toasts: [],
+                nextId: 1,
 
-        // Toast Notification System
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toast-message');
-            const toastContainer = toast.querySelector('div');
+                addToast(detail) {
+                    const toast = {
+                        id: this.nextId++,
+                        message: detail.message,
+                        type: detail.type || 'info',
+                        show: true
+                    };
 
-            // Update message
-            toastMessage.textContent = message;
+                    this.toasts.push(toast);
 
-            // Update styling based on type
-            const baseClasses = 'px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max';
+                    setTimeout(() => {
+                        this.removeToast(toast.id);
+                    }, 5000);
+                },
 
-            switch (type) {
-                case 'success':
-                    toastContainer.className = `bg-green-500 text-white ${baseClasses}`;
-                    break;
-                case 'error':
-                    toastContainer.className = `bg-red-500 text-white ${baseClasses}`;
-                    break;
-                case 'warning':
-                    toastContainer.className = `bg-yellow-500 text-white ${baseClasses}`;
-                    break;
-                case 'info':
-                    toastContainer.className = `bg-blue-500 text-white ${baseClasses}`;
-                    break;
-                default:
-                    toastContainer.className = `bg-gray-500 text-white ${baseClasses}`;
-            }
-
-            // Show toast
-            toast.classList.remove('translate-y-32');
-            toast.classList.add('translate-y-0');
-
-            // Hide toast after 3 seconds
-            setTimeout(() => {
-                toast.classList.remove('translate-y-0');
-                toast.classList.add('translate-y-32');
-            }, 3000);
-        }
-
-        // Enhanced Add to Cart Function
-        function addToCart(productId, variantId = null, quantity = 1) {
-            const button = event?.target;
-            let originalText = '';
-
-            if (button) {
-                originalText = button.textContent;
-                button.textContent = 'Adding...';
-                button.disabled = true;
-                button.classList.add('opacity-75');
-            }
-
-            console.log('Adding to cart:', {
-                productId,
-                variantId,
-                quantity
-            });
-
-            fetch(window.Laravel.routes.cartAdd, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        product_id: productId,
-                        variant_id: variantId,
-                        quantity: quantity
-                    })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.text().then(text => {
-                            console.error('Error response:', text);
-                            throw new Error(`HTTP ${response.status}: ${text}`);
-                        });
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Cart response:', data);
-
-                    if (data.success) {
-                        // Update cart count
-                        const cartCount = document.getElementById('cart-count');
-                        if (cartCount) {
-                            cartCount.textContent = data.cart_count;
-
-                            // Animate cart icon
-                            cartCount.classList.add('animate-bounce');
-                            setTimeout(() => cartCount.classList.remove('animate-bounce'), 1000);
-                        }
-
-                        // Show success message
-                        showToast(`Added ${quantity} item${quantity > 1 ? 's' : ''} to cart!`, 'success');
-                    } else {
-                        throw new Error(data.message || 'Failed to add item to cart');
-                    }
-                })
-                .catch(error => {
-                    console.error('Cart Error:', error);
-                    showToast('Error adding item to cart', 'error');
-                })
-                .finally(() => {
-                    // Reset button state
-                    if (button) {
-                        button.textContent = originalText;
-                        button.disabled = false;
-                        button.classList.remove('opacity-75');
-                    }
-                });
-        }
-
-        // Update Cart Quantity
-        function updateCartQuantity(key, quantity) {
-            if (quantity < 1) {
-                removeFromCart(key);
-                return;
-            }
-
-            const url = window.Laravel.routes.cartUpdate.replace(':key', key);
-
-            fetch(url, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        quantity: quantity
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Update cart count and total
-                        const cartCount = document.getElementById('cart-count');
-                        if (cartCount) {
-                            cartCount.textContent = data.cart_count;
-                        }
-
-                        // Reload page to update cart display
-                        location.reload();
-                    } else {
-                        showToast('Error updating cart', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Update cart error:', error);
-                    showToast('Error updating cart', 'error');
-                });
-        }
-
-        // Remove from Cart
-        function removeFromCart(key) {
-            const url = window.Laravel.routes.cartRemove.replace(':key', key);
-
-            fetch(url, {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Update cart count
-                        const cartCount = document.getElementById('cart-count');
-                        if (cartCount) {
-                            cartCount.textContent = data.cart_count;
-                        }
-
-                        showToast('Item removed from cart', 'info');
-
-                        // Reload page to update cart display
-                        location.reload();
-                    } else {
-                        showToast('Error removing item', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Remove from cart error:', error);
-                    showToast('Error removing item', 'error');
-                });
-        }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Frontend layout loaded successfully');
-
-            // Close mobile menu when clicking outside
-            document.addEventListener('click', function(e) {
-                const mobileMenu = document.querySelector('[x-data]').__x;
-                if (mobileMenu && mobileMenu.$data.mobileMenuOpen) {
-                    const nav = document.querySelector('header nav');
-                    if (!nav.contains(e.target)) {
-                        mobileMenu.$data.mobileMenuOpen = false;
+                removeToast(id) {
+                    const index = this.toasts.findIndex(toast => toast.id === id);
+                    if (index > -1) {
+                        this.toasts[index].show = false;
+                        setTimeout(() => {
+                            const newIndex = this.toasts.findIndex(toast => toast.id === id);
+                            if (newIndex > -1) {
+                                this.toasts.splice(newIndex, 1);
+                            }
+                        }, 300);
                     }
                 }
-            });
+            };
+        }
 
-            // Keyboard navigation
-            document.addEventListener('keydown', function(e) {
-                // Close cart with Escape key
-                if (e.key === 'Escape') {
-                    const appData = document.querySelector('[x-data]').__x;
-                    if (appData) {
-                        appData.$data.cartOpen = false;
-                        appData.$data.mobileMenuOpen = false;
-                    }
-                }
-            });
-        });
 
         // Performance monitoring
         window.addEventListener('load', function() {
-            const loadTime = window.performance.timing.domContentLoadedEventEnd - window.performance.timing
-                .navigationStart;
+            const loadTime = window.performance.timing.domContentLoadedEventEnd -
+                window.performance.timing.navigationStart;
             console.log(`Page loaded in ${loadTime}ms`);
         });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (window.Alpine && Alpine.store) {
+                    const cartStore = Alpine.store('cart');
+                    if (cartStore && cartStore.isOpen) {
+                        cartStore.close();
+                    }
+                }
+
+                const appData = document.querySelector('[x-data]').__x;
+                if (appData && appData.$data.mobileMenuOpen) {
+                    appData.$data.mobileMenuOpen = false;
+                }
+            }
+        });
+
+        // Global helper function (for backward compatibility)
+        window.addToCart = async function(productId, variantId = null, quantity = 1) {
+            if (window.Alpine && Alpine.store) {
+                try {
+                    await Alpine.store('cart').addItem(productId, variantId, quantity);
+                } catch (error) {
+                    console.error('Error adding to cart:', error);
+                }
+            }
+        };
+
+        console.log('Cart system initialized');
     </script>
 
-    <!-- Additional Scripts -->
     @stack('scripts')
 </body>
 

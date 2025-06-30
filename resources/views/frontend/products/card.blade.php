@@ -1,4 +1,3 @@
-{{-- resources/views/frontend/products/card.blade.php --}}
 <div
     class="bg-white rounded-lg hover:scale-105 transition-transform border border-gray-300 overflow-hidden h-full flex flex-col">
     <a href="{{ route('products.show', $product->slug) }}">
@@ -49,67 +48,30 @@
 
         <!-- Price and Button Section - Always at bottom -->
         <div class="mt-auto">
-            <div class="flex justify-between items-end">
+            <div class="flex justify-between items-end mb-3">
                 <!-- Price Section - Always Stacked -->
                 <div class="flex flex-col">
-                    <span class="font-bold text-lg text-gray-900">${{ number_format($product->price, 2) }}</span>
+                    <span class="font-bold text-lg text-gray-900">£{{ number_format($product->price, 2) }}</span>
                     @if ($product->compare_price && $product->compare_price > $product->price)
                         <span
-                            class="text-sm text-gray-500 line-through">${{ number_format($product->compare_price, 2) }}</span>
-                    @endif
-                </div>
-
-                <!-- Button Section - Always Bottom Right -->
-                <div class="flex-shrink-0">
-                    @if ($product->isInStock() && !$product->hasVariants())
-                        <button onclick="addToCart({{ $product->id }})"
-                            class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 whitespace-nowrap">
-                            Add to Cart
-                        </button>
-                    @else
-                        <a href="{{ route('products.show', $product->slug) }}"
-                            class="inline-block px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 whitespace-nowrap">
-                            View Options
-                        </a>
+                            class="text-sm text-gray-500 line-through">£{{ number_format($product->compare_price, 2) }}</span>
                     @endif
                 </div>
             </div>
+
+            <!-- NEW: Component-based Add to Cart Button -->
+            @if ($product->isInStock() && !$product->hasVariants())
+                <x-cart.add-to-cart-button :item="$product" size="sm" class="w-full" />
+            @else
+                <a href="{{ route('products.show', $product->slug) }}"
+                    class="inline-block w-full px-3 py-1 bg-blue-600 text-white text-sm text-center rounded hover:bg-blue-700 focus:ring-2 focus:ring-blue-500">
+                    @if ($product->hasVariants())
+                        View Options
+                    @else
+                        Out of Stock
+                    @endif
+                </a>
+            @endif
         </div>
     </div>
 </div>
-
-<script>
-    function addToCart(productId, variantId = null) {
-        fetch('{{ route('cart.add') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    product_id: productId,
-                    variant_id: variantId,
-                    quantity: 1
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update cart count
-                    const cartCount = document.getElementById('cart-count');
-                    if (cartCount) {
-                        cartCount.textContent = data.cart_count;
-                    }
-
-                    // Show success message (you can implement a toast notification here)
-                    alert('Item added to cart!');
-                } else {
-                    alert(data.message || 'Error adding item to cart');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error adding item to cart');
-            });
-    }
-</script>

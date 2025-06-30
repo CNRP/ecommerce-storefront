@@ -55,7 +55,6 @@
                 </div>
 
                 <!-- Product Variants - Flexible Attribute System -->
-                <!-- Product Variants - Completely Dynamic -->
                 @if ($product->hasVariants())
                     <div class="mb-6" x-data="{
                         selectedAttributes: {},
@@ -63,6 +62,7 @@
                         availableVariants: {{ $product->variants->load('attributeValues.attribute')->toJson() }},
                         attributes: {},
                         lowStockThreshold: {{ $product->low_stock_threshold ?? 5 }},
+                        loading: false,
                     
                         init() {
                             // Group attributes dynamically with full metadata
@@ -319,26 +319,40 @@
                         <!-- Add to Cart Button -->
                         <div class="mb-6">
                             <button
-                                @click="if(selectedVariant && selectedVariant.inventory_quantity > 0) {
-                addToCart({{ $product->id }}, selectedVariant.id);
-            } else if(!allRequiredAttributesSelected()) {
-                alert('Please select all options first');
-            } else {
-                alert('This variant is out of stock');
-            }"
-                                :disabled="!selectedVariant || selectedVariant.inventory_quantity <= 0"
-                                :class="{
-                                    'bg-blue-600 hover:bg-blue-700 text-white': selectedVariant && selectedVariant
-                                        .inventory_quantity > 0,
-                                    'bg-gray-400 text-white cursor-not-allowed': !selectedVariant || selectedVariant
-                                        .inventory_quantity <= 0
+                                @click="async () => {
+                                    if (loading) return;
+                                    if (!allRequiredAttributesSelected()) {
+                                        $store.cart.showToast('Please select all options first', 'error');
+                                        return;
+                                    }
+                                    if (selectedVariant && selectedVariant.inventory_quantity > 0) {
+                                        loading = true;
+                                        await $store.cart.addItem({{ $product->id }}, selectedVariant.id);
+                                        loading = false;
+                                    }
                                 }"
-                                class="w-full py-3 px-6 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 transition-colors">
-                                <span x-show="!allRequiredAttributesSelected()">Select Options</span>
+                                :disabled="!selectedVariant || selectedVariant.inventory_quantity <= 0 || loading"
+                                class="w-full py-3 px-6 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 transition-colors flex items-center justify-center
+                                       bg-blue-600 hover:bg-blue-700 text-white
+                                       disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                :class="{ '!bg-blue-400': loading }">
+                                <div x-show="loading" class="flex items-center">
+                                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                                        xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                                            stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                        </path>
+                                    </svg>
+                                    <span>Adding...</span>
+                                </div>
+                                <span x-show="!loading && !allRequiredAttributesSelected()">Select Options</span>
                                 <span
-                                    x-show="allRequiredAttributesSelected() && (!selectedVariant || selectedVariant.inventory_quantity <= 0)">Out
+                                    x-show="!loading && allRequiredAttributesSelected() && (!selectedVariant || selectedVariant.inventory_quantity <= 0)">Out
                                     of Stock</span>
-                                <span x-show="selectedVariant && selectedVariant.inventory_quantity > 0">Add to Cart</span>
+                                <span x-show="!loading && selectedVariant && selectedVariant.inventory_quantity > 0">Add to
+                                    Cart</span>
                             </button>
                         </div>
                     </div>
@@ -348,7 +362,6 @@
                         <!-- Price -->
                         <div class="flex items-center space-x-3 mb-4">
                             <span class="text-3xl font-bold text-gray-900">${{ number_format($product->price, 2) }}</span>
-
                             @if ($product->compare_price && $product->compare_price > $product->price)
                                 <span
                                     class="text-xl text-gray-500 line-through">${{ number_format($product->compare_price, 2) }}</span>
@@ -386,20 +399,29 @@
                         @endif
 
                         <!-- Quantity & Add to Cart -->
-                        <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-4" x-data="addToCartComponent({{ $product->id }})">
                             <!-- Quantity Selector -->
                             <div class="flex items-center border border-gray-300 rounded">
-                                <button onclick="decreaseQuantity()" class="px-3 py-2 hover:bg-gray-100">-</button>
-                                <input type="number" id="quantity" value="1" min="1"
-                                    class="w-16 px-3 py-2 text-center border-0 focus:ring-0">
-                                <button onclick="increaseQuantity()" class="px-3 py-2 hover:bg-gray-100">+</button>
+                                <button @click="decreaseQuantity()" class="px-3 py-2 hover:bg-gray-100">-</button>
+                                <input type="number" id="quantity" x-model.number="quantity" min="1"
+                                    max="10" class="w-16 px-3 py-2 text-center border-0 focus:ring-0">
+                                <button @click="increaseQuantity()" class="px-3 py-2 hover:bg-gray-100">+</button>
                             </div>
 
                             <!-- Add to Cart -->
                             @if ($product->isInStock())
-                                <button onclick="addToCartWithQuantity({{ $product->id }})"
-                                    class="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500">
-                                    Add to Cart
+                                <button @click="addToCart()" :disabled="loading"
+                                    class="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400 disabled:cursor-wait flex justify-center items-center">
+                                    <svg x-show="loading" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                                        xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                                            stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                        </path>
+                                    </svg>
+                                    <span x-show="!loading">Add to Cart</span>
+                                    <span x-show="loading">Adding...</span>
                                 </button>
                             @else
                                 <button disabled
@@ -427,7 +449,8 @@
                         <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">SKU</dt>
-                                <dd class="text-sm text-gray-900">{{ $product->sku }}</dd>
+                                <dd class="text-sm text-gray-900"
+                                    x-text="selectedVariant ? selectedVariant.sku : '{{ $product->sku }}'"></dd>
                             </div>
 
                             @if ($product->weight)
@@ -489,51 +512,6 @@
         // Image gallery functionality
         function changeMainImage(imageSrc) {
             document.getElementById('main-product-image').src = imageSrc;
-        }
-
-        // Quantity controls for simple products
-        function increaseQuantity() {
-            const qty = document.getElementById('quantity');
-            qty.value = parseInt(qty.value) + 1;
-        }
-
-        function decreaseQuantity() {
-            const qty = document.getElementById('quantity');
-            if (parseInt(qty.value) > 1) {
-                qty.value = parseInt(qty.value) - 1;
-            }
-        }
-
-        // Add to cart with quantity
-        function addToCartWithQuantity(productId) {
-            const quantity = parseInt(document.getElementById('quantity').value);
-
-            fetch('{{ route('cart.add') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        product_id: productId,
-                        variant_id: null,
-                        quantity: quantity
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('cart-count').textContent = data.cart_count;
-                        showToast(`Added ${quantity} item(s) to cart!`, 'success');
-                    } else {
-                        showToast('Error adding item to cart', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showToast('Error adding item to cart', 'error');
-                });
         }
     </script>
 @endsection

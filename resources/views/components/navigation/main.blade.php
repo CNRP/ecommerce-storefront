@@ -49,7 +49,7 @@
                 @include('components.navigation.auth')
 
                 <!-- Cart Icon -->
-                @include('components.navigation.cart')
+                <x-cart.cart-icon />
             </div>
 
             <!-- Mobile Menu Button -->
