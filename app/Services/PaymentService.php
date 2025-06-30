@@ -1,6 +1,6 @@
 <?php
 
-// app/Services/PaymentService.php
+// app/Services/PaymentService.php - Updated to work with CheckoutService
 
 namespace App\Services;
 
@@ -59,11 +59,16 @@ class PaymentService
 
             $paymentIntent = $this->stripe->paymentIntents->create($paymentIntentData);
 
-            // Update order with Stripe Payment Intent ID
+            // Update order with Stripe Payment Intent ID and move to pending_payment
             $order->update([
                 'stripe_payment_intent_id' => $paymentIntent->id,
                 'payment_status' => $paymentIntent->status,
             ]);
+
+            // Update order status from draft to pending_payment
+            if ($order->status === 'draft') {
+                app(OrderService::class)->updateOrderStatus($order, 'pending_payment', 'Payment intent created');
+            }
 
             // Create payment record
             Payment::create([
@@ -86,6 +91,81 @@ class PaymentService
             ]);
             throw new \Exception('Failed to create payment intent: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Handle successful payment
+     */
+    protected function handlePaymentSucceeded(array $paymentIntent): void
+    {
+        $order = Order::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+
+        if (! $order) {
+            Log::warning('Order not found for successful payment', ['payment_intent_id' => $paymentIntent['id']]);
+
+            return;
+        }
+
+        // Update order payment status
+        $order->update([
+            'payment_status' => 'succeeded',
+            'payment_confirmed_at' => now(),
+        ]);
+
+        // Update payment record
+        $payment = $order->payments()->where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+        if ($payment) {
+            $payment->update([
+                'status' => 'succeeded',
+                'amount_received' => $paymentIntent['amount_received'],
+                'payment_method_type' => $paymentIntent['charges']['data'][0]['payment_method_details']['type'] ?? null,
+                'payment_method_details' => $this->extractPaymentMethodDetails($paymentIntent),
+                'stripe_data' => $paymentIntent,
+                'processed_at' => now(),
+            ]);
+        }
+
+        // Transition order to processing - use CheckoutService for this
+        app(CheckoutService::class)->confirmPayment($order);
+
+        Log::info('Payment succeeded', ['order_id' => $order->id, 'order_number' => $order->order_number]);
+    }
+
+    /**
+     * Handle failed payment
+     */
+    protected function handlePaymentFailed(array $paymentIntent): void
+    {
+        $order = Order::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+
+        if (! $order) {
+            Log::warning('Order not found for failed payment', ['payment_intent_id' => $paymentIntent['id']]);
+
+            return;
+        }
+
+        // Update order payment status
+        $order->update(['payment_status' => 'failed']);
+
+        // Update payment record
+        $payment = $order->payments()->where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+        if ($payment) {
+            $payment->update([
+                'status' => 'failed',
+                'failure_reason' => $paymentIntent['last_payment_error']['code'] ?? 'unknown',
+                'failure_message' => $paymentIntent['last_payment_error']['message'] ?? 'Payment failed',
+                'stripe_data' => $paymentIntent,
+            ]);
+        }
+
+        // Update order status
+        app(OrderService::class)->updateOrderStatus($order, 'payment_failed', 'Payment failed');
+
+        Log::info('Payment failed', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'failure_reason' => $paymentIntent['last_payment_error']['code'] ?? 'unknown',
+        ]);
     }
 
     /**
@@ -273,81 +353,6 @@ class PaymentService
     }
 
     /**
-     * Handle successful payment
-     */
-    protected function handlePaymentSucceeded(array $paymentIntent): void
-    {
-        $order = Order::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
-
-        if (! $order) {
-            Log::warning('Order not found for successful payment', ['payment_intent_id' => $paymentIntent['id']]);
-
-            return;
-        }
-
-        // Update order payment status
-        $order->update([
-            'payment_status' => 'succeeded',
-            'payment_confirmed_at' => now(),
-        ]);
-
-        // Update payment record
-        $payment = $order->payments()->where('stripe_payment_intent_id', $paymentIntent['id'])->first();
-        if ($payment) {
-            $payment->update([
-                'status' => 'succeeded',
-                'amount_received' => $paymentIntent['amount_received'],
-                'payment_method_type' => $paymentIntent['charges']['data'][0]['payment_method_details']['type'] ?? null,
-                'payment_method_details' => $this->extractPaymentMethodDetails($paymentIntent),
-                'stripe_data' => $paymentIntent,
-                'processed_at' => now(),
-            ]);
-        }
-
-        // Transition order to processing
-        app(OrderService::class)->updateOrderStatus($order, 'processing', 'Payment confirmed');
-
-        Log::info('Payment succeeded', ['order_id' => $order->id, 'order_number' => $order->order_number]);
-    }
-
-    /**
-     * Handle failed payment
-     */
-    protected function handlePaymentFailed(array $paymentIntent): void
-    {
-        $order = Order::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
-
-        if (! $order) {
-            Log::warning('Order not found for failed payment', ['payment_intent_id' => $paymentIntent['id']]);
-
-            return;
-        }
-
-        // Update order payment status
-        $order->update(['payment_status' => 'failed']);
-
-        // Update payment record
-        $payment = $order->payments()->where('stripe_payment_intent_id', $paymentIntent['id'])->first();
-        if ($payment) {
-            $payment->update([
-                'status' => 'failed',
-                'failure_reason' => $paymentIntent['last_payment_error']['code'] ?? 'unknown',
-                'failure_message' => $paymentIntent['last_payment_error']['message'] ?? 'Payment failed',
-                'stripe_data' => $paymentIntent,
-            ]);
-        }
-
-        // Update order status
-        app(OrderService::class)->updateOrderStatus($order, 'payment_failed', 'Payment failed');
-
-        Log::info('Payment failed', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number,
-            'failure_reason' => $paymentIntent['last_payment_error']['code'] ?? 'unknown',
-        ]);
-    }
-
-    /**
      * Handle payment requiring action
      */
     protected function handlePaymentRequiresAction(array $paymentIntent): void
@@ -403,11 +408,7 @@ class PaymentService
      */
     protected function handleChargeDispute(array $dispute): void
     {
-        // Find the order associated with this charge
         $chargeId = $dispute['charge'];
-
-        // TODO: Implement dispute handling logic
-        // This might involve notifying admins, updating order status, etc.
 
         Log::warning('Charge dispute created', [
             'dispute_id' => $dispute['id'],

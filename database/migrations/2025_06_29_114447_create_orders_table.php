@@ -17,17 +17,8 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained()->onDelete('restrict');
             $table->foreignId('vendor_id')->nullable()->constrained()->onDelete('restrict');
 
-            // Order status
-            $table->enum('status', [
-                'pending_payment',
-                'payment_failed',
-                'processing',
-                'partially_fulfilled',
-                'fulfilled',
-                'completed',
-                'cancelled',
-                'refunded',
-            ])->default('pending_payment');
+            // Order status - Changed from enum to string for flexibility
+            $table->string('status', 50)->default('draft');
 
             // Financial data (all amounts in pence to avoid floating point issues)
             $table->unsignedInteger('subtotal_amount'); // Items total before tax/shipping
@@ -41,9 +32,9 @@ return new class extends Migration
             $table->decimal('tax_rate', 5, 4)->default(0.20); // 20% UK VAT
             $table->boolean('tax_inclusive')->default(true); // UK prices include VAT
 
-            // Payment information - FIXED: Use string instead of enum for Stripe compatibility
+            // Payment information
             $table->string('stripe_payment_intent_id')->nullable()->unique();
-            $table->string('payment_status', 50)->nullable()->default('pending'); // Changed from enum to string
+            $table->string('payment_status', 50)->nullable()->default('pending');
             $table->timestamp('payment_confirmed_at')->nullable();
 
             // Customer information snapshot

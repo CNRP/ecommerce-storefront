@@ -1215,14 +1215,14 @@ class InventoryTransaction extends Model
         ?string $reference = null,
         ?string $notes = null
     ): self {
-        // Get current inventory
+        // FIXED: Get current inventory correctly for both products and variants
         $currentInventory = $item->inventory_quantity;
         $newInventory = $currentInventory + $quantityChange;
 
         // Update the item's inventory
         $item->update(['inventory_quantity' => $newInventory]);
 
-        // Create transaction record
+        // FIXED: Create transaction record with correct IDs
         return self::create([
             'product_id' => $item instanceof Product ? $item->id : $item->product_id,
             'product_variant_id' => $item instanceof ProductVariant ? $item->id : null,
@@ -2507,12 +2507,12 @@ class CartService
                     'sku' => $item->sku,
                 ];
             } else {
-                // Simple product
+                // Simple product - FIXED: Make sure variant_id is properly null
                 $cartArray[$key] = [
                     'type' => 'product',
                     'id' => $item->id,
                     'product_id' => $item->id,
-                    'variant_id' => null, // Explicitly set to null for simple products
+                    'variant_id' => null, // IMPORTANT: Explicitly set to null
                     'name' => $item->name,
                     'price' => $item->price,
                     'quantity' => $quantity,
@@ -2530,6 +2530,7 @@ class CartService
             'item_type' => $item instanceof ProductVariant ? 'variant' : 'product',
             'item_id' => $item->id,
             'product_id' => $item instanceof ProductVariant ? $item->product_id : $item->id,
+            'variant_id' => $item instanceof ProductVariant ? $item->id : null, // Log this for debugging
             'quantity' => $quantity,
             'cart_total_items' => $this->getItemCount(),
         ]);
@@ -2740,9 +2741,6 @@ class CheckoutService
         $this->orderService->updateOrderStatus($order, 'payment_failed', $reason);
     }
 
-    /**
-     * Validate that all cart items are still in stock
-     */
     protected function validateCartStock(\Illuminate\Support\Collection $cart): void
     {
         foreach ($cart as $key => $item) {
@@ -2781,12 +2779,43 @@ class CheckoutService
                 continue; // Skip stock validation for products that don't track inventory
             }
 
-            // Handle variant-based products
-            if (isset($item['variant_id']) && $item['variant_id']) {
+            // FIXED: Better logic for determining if this is a variant or simple product
+            // Check if the cart item has a variant_id AND the product actually has variants
+            if (isset($item['variant_id']) && $item['variant_id'] && $product->hasVariants()) {
                 $this->validateVariantStock($product, $item);
             } else {
+                // This is either a simple product or a product where no variant was selected
                 $this->validateSimpleProductStock($product, $item);
             }
+        }
+    }
+
+    /**
+     * Validate stock for a simple product (no variants) - UPDATED
+     */
+    protected function validateSimpleProductStock(Product $product, array $item): void
+    {
+        // FIXED: Better validation logic for simple products
+        // If the product has variants but no variant was selected in the cart, that's an error
+        if ($product->hasVariants() && (! isset($item['variant_id']) || ! $item['variant_id'])) {
+            throw new \InvalidArgumentException(
+                "Product {$product->name} has variants but no variant was selected. Please choose a specific variant."
+            );
+        }
+
+        // If this is truly a simple product (no variants), check its stock
+        if (! $product->hasVariants()) {
+            if ($product->track_inventory && $product->inventory_quantity < $item['quantity']) {
+                throw new \InvalidArgumentException(
+                    "Insufficient stock for {$product->name}. Available: {$product->inventory_quantity}, Requested: {$item['quantity']}"
+                );
+            }
+
+            Log::info('Simple product stock validated', [
+                'product_id' => $product->id,
+                'available' => $product->inventory_quantity,
+                'requested' => $item['quantity'],
+            ]);
         }
     }
 
@@ -2816,33 +2845,6 @@ class CheckoutService
         Log::info('Variant stock validated', [
             'variant_id' => $variant->id,
             'available' => $variant->inventory_quantity,
-            'requested' => $item['quantity'],
-        ]);
-    }
-
-    /**
-     * Validate stock for a simple product (no variants)
-     */
-    protected function validateSimpleProductStock(Product $product, array $item): void
-    {
-        // For simple products or products without variants, check the product's own inventory
-        if ($product->hasVariants()) {
-            // If product has variants but none was selected, that's an error
-            throw new \InvalidArgumentException(
-                "Product {$product->name} has variants but no variant was selected. Please choose a specific variant."
-            );
-        }
-
-        // Check simple product stock
-        if ($product->track_inventory && $product->inventory_quantity < $item['quantity']) {
-            throw new \InvalidArgumentException(
-                "Insufficient stock for {$product->name}. Available: {$product->inventory_quantity}, Requested: {$item['quantity']}"
-            );
-        }
-
-        Log::info('Simple product stock validated', [
-            'product_id' => $product->id,
-            'available' => $product->inventory_quantity,
             'requested' => $item['quantity'],
         ]);
     }
@@ -2941,15 +2943,24 @@ use Illuminate\Support\Facades\DB;
 class InventoryService
 {
     /**
-     * Reserve inventory for an order
+     * Reserve inventory for an order - FIXED
      */
     public function reserveInventoryForOrder(Order $order): void
     {
         DB::transaction(function () use ($order) {
             foreach ($order->items as $orderItem) {
-                $item = $orderItem->productVariant ?: $orderItem->product;
+                // FIXED: Determine the item and whether to track inventory
+                if ($orderItem->productVariant) {
+                    // This is a variant order item
+                    $item = $orderItem->productVariant;
+                    $shouldTrackInventory = $orderItem->product->track_inventory;
+                } else {
+                    // This is a simple product order item
+                    $item = $orderItem->product;
+                    $shouldTrackInventory = $orderItem->product->track_inventory;
+                }
 
-                if ($item->product->track_inventory) {
+                if ($shouldTrackInventory) {
                     $this->reserveInventory(
                         $item,
                         $orderItem->quantity,
@@ -2962,15 +2973,22 @@ class InventoryService
     }
 
     /**
-     * Release reserved inventory for an order
+     * Release reserved inventory for an order - FIXED
      */
     public function releaseReservedInventory(Order $order): void
     {
         DB::transaction(function () use ($order) {
             foreach ($order->items as $orderItem) {
-                $item = $orderItem->productVariant ?: $orderItem->product;
+                // FIXED: Same logic for releasing
+                if ($orderItem->productVariant) {
+                    $item = $orderItem->productVariant;
+                    $shouldTrackInventory = $orderItem->product->track_inventory;
+                } else {
+                    $item = $orderItem->product;
+                    $shouldTrackInventory = $orderItem->product->track_inventory;
+                }
 
-                if ($item->product->track_inventory) {
+                if ($shouldTrackInventory) {
                     $this->releaseInventory(
                         $item,
                         $orderItem->quantity,
@@ -3013,7 +3031,7 @@ class InventoryService
     }
 
     /**
-     * Reserve inventory
+     * Reserve inventory - PRIVATE METHOD FIX
      */
     protected function reserveInventory(Product|ProductVariant $item, int $quantity, Order $order, string $notes): void
     {
@@ -3028,7 +3046,7 @@ class InventoryService
     }
 
     /**
-     * Release reserved inventory
+     * Release reserved inventory - PRIVATE METHOD FIX
      */
     protected function releaseInventory(Product|ProductVariant $item, int $quantity, Order $order, string $notes): void
     {
@@ -3095,8 +3113,16 @@ class InventoryService
      */
     public function checkStockAvailability(Product|ProductVariant $item, int $requestedQuantity): bool
     {
-        if (! $item->product->track_inventory) {
-            return true;
+        // For products, check if they track inventory
+        if ($item instanceof Product) {
+            if (! $item->track_inventory) {
+                return true;
+            }
+        } else {
+            // For variants, check if the parent product tracks inventory
+            if (! $item->product->track_inventory) {
+                return true;
+            }
         }
 
         return $item->inventory_quantity >= $requestedQuantity;
@@ -3181,6 +3207,9 @@ class OrderService
                 $this->createOrderItemFromCart($cartItem, $order);
             }
 
+            // FIXED: Load relationships before reserving inventory
+            $order->load(['items.product', 'items.productVariant']);
+
             // Reserve inventory
             $this->inventoryService->reserveInventoryForOrder($order);
 
@@ -3189,7 +3218,7 @@ class OrderService
     }
 
     /**
-     * Create an order item from cart data with proper validation
+     * Create an order item from cart data with proper validation - UPDATED
      */
     protected function createOrderItemFromCart(array $cartItem, Order $order): void
     {
@@ -3214,14 +3243,19 @@ class OrderService
         $variant = null;
         $item = $product; // Default to product for pricing
 
-        // If there's a variant_id, load the variant
-        if (isset($cartItem['variant_id']) && $cartItem['variant_id']) {
+        // FIXED: Better variant handling
+        // If there's a variant_id in cart AND it's not null AND the product has variants
+        if (isset($cartItem['variant_id']) && $cartItem['variant_id'] && $product->hasVariants()) {
             $variant = $product->variants->firstWhere('id', $cartItem['variant_id']);
             if (! $variant) {
                 throw new \InvalidArgumentException("Variant {$cartItem['variant_id']} not found when creating order");
             }
             $item = $variant; // Use variant for pricing
+        } elseif ($product->hasVariants() && (! isset($cartItem['variant_id']) || ! $cartItem['variant_id'])) {
+            // Product has variants but no variant selected - this shouldn't happen after cart validation
+            throw new \InvalidArgumentException("Product {$product->name} requires a variant selection");
         }
+        // If product doesn't have variants, we use the product itself (simple product)
 
         // Prepare variant attributes for storage
         $variantAttributes = null;
@@ -3256,6 +3290,7 @@ class OrderService
             'order_item_id' => $orderItem->id,
             'product_id' => $product->id,
             'variant_id' => $variant?->id,
+            'is_simple_product' => ! $product->hasVariants(),
             'quantity' => $cartItem['quantity'],
             'unit_price' => $orderItem->unit_price,
             'line_total' => $orderItem->line_total,
@@ -4845,7 +4880,7 @@ class ProductSeeder extends Seeder
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <!-- Order Details -->
             <div class="lg:col-span-2">
-                <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Details</h2>
 
                     <div class="grid grid-cols-2 gap-4 text-sm">
@@ -4872,7 +4907,7 @@ class ProductSeeder extends Seeder
                 </div>
 
                 <!-- Order Items -->
-                <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Items</h2>
 
                     <div class="space-y-4">
@@ -4921,7 +4956,7 @@ class ProductSeeder extends Seeder
                 <!-- Addresses -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Billing Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Billing Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -4941,7 +4976,7 @@ class ProductSeeder extends Seeder
                     </div>
 
                     <!-- Shipping Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-300  p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Shipping Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -4964,7 +4999,7 @@ class ProductSeeder extends Seeder
 
             <!-- Order Summary -->
             <div class="lg:col-span-1">
-                <div class="bg-white rounded-lg shadow-sm border p-6 sticky top-24">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 sticky top-24">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Summary</h2>
 
                     <div class="space-y-3 text-sm">
@@ -4986,7 +5021,7 @@ class ProductSeeder extends Seeder
                                 <span>-{{ $order->getDiscountMoney()->format() }}</span>
                             </div>
                         @endif
-                        <div class="border-t pt-3 flex justify-between font-medium text-lg">
+                        <div class="border-t border-gray-300  pt-3 flex justify-between font-medium text-lg">
                             <span>Total</span>
                             <span>{{ $order->getTotalMoney()->format() }}</span>
                         </div>
@@ -5005,7 +5040,7 @@ class ProductSeeder extends Seeder
                     </div>
 
                     <!-- Contact Information -->
-                    <div class="mt-6 pt-6 border-t text-center">
+                    <div class="mt-6 pt-6 border-t border-gray-300  text-center">
                         <h3 class="text-sm font-medium text-gray-900 mb-2">Need Help?</h3>
                         <p class="text-sm text-gray-600 mb-3">
                             We'll send you shipping and tracking information via email to
@@ -5365,6 +5400,10 @@ class ProductSeeder extends Seeder
                 stripeInitialized: false, // Flag to prevent re-initialization
 
                 init() {
+
+                    this.billing_address.country = this.country;
+                    this.shipping_address.country = this.country;
+
                     // Copy billing to shipping initially
                     this.copyBillingToShipping();
 
@@ -5399,7 +5438,8 @@ class ProductSeeder extends Seeder
                 copyBillingToShipping() {
                     if (this.sameAsBilling) {
                         this.shipping_address = {
-                            ...this.billing_address
+                            ...this.billing_address,
+                            country: this.country // Ensure country is copied
                         };
                     }
                 },
@@ -5410,10 +5450,16 @@ class ProductSeeder extends Seeder
                         return;
                     }
 
-                    // Check if basic form fields are filled
-                    if (this.customer.first_name && this.customer.last_name && this.customer.email &&
-                        this.billing_address.first_name && this.billing_address.address_line_1 &&
-                        this.billing_address.city && this.billing_address.postal_code) {
+                    // Check if basic form fields are filled INCLUDING country
+                    if (this.customer.first_name &&
+                        this.customer.last_name &&
+                        this.customer.email &&
+                        this.billing_address.first_name &&
+                        this.billing_address.address_line_1 &&
+                        this.billing_address.city &&
+                        this.billing_address.postal_code &&
+                        this.billing_address.state_county && // Added this
+                        this.country) { // Added country validation
 
                         this.initializeStripe();
                     }
@@ -6107,7 +6153,7 @@ class ProductSeeder extends Seeder
 @section('content')
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Order Header -->
-        <div class="bg-white rounded-lg shadow-sm border p-6 mb-8">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-8">
             <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Order {{ $order->order_number }}</h1>
@@ -6246,7 +6292,7 @@ class ProductSeeder extends Seeder
                 @endif
 
                 <!-- Order Items -->
-                <div class="bg-white rounded-lg shadow-sm border p-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300  p-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-6">Order Items</h2>
 
                     <div class="space-y-6">
@@ -6327,7 +6373,7 @@ class ProductSeeder extends Seeder
                 <!-- Addresses -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Billing Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border  border-gray-300  p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Billing Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -6366,7 +6412,7 @@ class ProductSeeder extends Seeder
                         </div>
 
                         @if ($order->status === 'fulfilled' && $order->shipped_at)
-                            <div class="mt-4 pt-4 border-t">
+                            <div class="mt-4 pt-4 border-gray-300  border-t">
                                 <p class="text-sm font-medium text-gray-900">Shipping Information</p>
                                 <p class="text-sm text-gray-600">Shipped on {{ $order->shipped_at->format('M j, Y') }}</p>
                                 @if ($order->estimated_delivery_date)
@@ -6600,7 +6646,7 @@ class ProductSeeder extends Seeder
 
         @if (!$order)
             <!-- Order Tracking Form -->
-            <div class="bg-white rounded-lg shadow-sm border p-6">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
                 <form method="POST" action="{{ route('orders.track.submit') }}">
                     @csrf
 

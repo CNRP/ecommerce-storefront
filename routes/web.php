@@ -1,6 +1,12 @@
 <?php
 
 use App\Http\Controllers\Api\CheckoutController as ApiCheckoutController;
+use App\Http\Controllers\Auth\ForgotPasswordController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\ResetPasswordController;
+use App\Http\Controllers\Auth\VerificationController;
+use App\Http\Controllers\Frontend\AccountController;
 use App\Http\Controllers\Frontend\CartController;
 use App\Http\Controllers\Frontend\CategoryController;
 use App\Http\Controllers\Frontend\CheckoutController;
@@ -25,6 +31,38 @@ Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
 Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::patch('/cart/{key}', [CartController::class, 'update'])->name('cart.update');
 Route::delete('/cart/{key}', [CartController::class, 'remove'])->name('cart.remove');
+
+Route::middleware('guest')->group(function () {
+    // Login routes
+    Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [LoginController::class, 'login']);
+
+    // Registration routes
+    Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
+    Route::post('/register', [RegisterController::class, 'register']);
+
+    // Password reset routes
+    Route::get('/password/reset', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
+    Route::post('/password/email', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email');
+    Route::get('/password/reset/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
+    Route::post('/password/reset', [ResetPasswordController::class, 'reset'])->name('password.update');
+});
+
+// Authenticated routes - using custom check instead of middleware
+Route::group([], function () {
+    // Logout (accessible to authenticated users)
+    Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+
+    // Email verification routes (optional)
+    Route::get('/email/verify', [VerificationController::class, 'show'])->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', [VerificationController::class, 'verify'])->name('verification.verify');
+    Route::post('/email/resend', [VerificationController::class, 'resend'])->name('verification.resend');
+
+    // Account/Profile routes - authentication checked in controller
+    Route::get('/account', [AccountController::class, 'index'])->name('account.index');
+    Route::get('/account/edit', [AccountController::class, 'edit'])->name('account.edit');
+    Route::put('/account', [AccountController::class, 'update'])->name('account.update');
+});
 
 // Checkout routes
 Route::prefix('checkout')->name('checkout.')->group(function () {

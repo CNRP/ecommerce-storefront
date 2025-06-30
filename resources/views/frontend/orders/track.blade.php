@@ -12,7 +12,7 @@
 
         @if (!$order)
             <!-- Order Tracking Form -->
-            <div class="bg-white rounded-lg shadow-sm border p-6">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
                 <form method="POST" action="{{ route('orders.track.submit') }}">
                     @csrf
 

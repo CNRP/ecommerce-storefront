@@ -1,6 +1,6 @@
 <?php
 
-// app/Services/OrderService.php
+// app/Services/OrderService.php - Updated with proper status flow
 
 namespace App\Services;
 
@@ -21,7 +21,7 @@ class OrderService
     ) {}
 
     /**
-     * Create a new order from cart data - Updated to handle proper cart structure
+     * Create a new order from cart data with proper status flow
      */
     public function createOrder(
         Customer $customer,
@@ -34,19 +34,20 @@ class OrderService
             Log::info('Creating order', [
                 'customer_id' => $customer->id,
                 'cart_items_count' => $cartItems->count(),
-                'billing_address' => $billingAddress,
-                'shipping_address' => $shippingAddress,
                 'order_data' => $orderData,
             ]);
 
             // Calculate totals
             $totals = $this->calculateOrderTotals($cartItems, $orderData);
 
+            // Determine initial status based on context
+            $initialStatus = $orderData['status'] ?? 'draft';
+
             // Create the order
             $order = Order::create([
                 'customer_id' => $customer->id,
                 'vendor_id' => $orderData['vendor_id'] ?? null,
-                'status' => 'pending_payment',
+                'status' => $initialStatus,
                 'subtotal_amount' => $totals['subtotal_amount'],
                 'tax_amount' => $totals['tax_amount'],
                 'shipping_amount' => $totals['shipping_amount'],
@@ -67,25 +68,129 @@ class OrderService
                 'metadata' => $orderData['metadata'] ?? [],
             ]);
 
-            Log::info('Order created', ['order_id' => $order->id, 'order_number' => $order->order_number]);
+            Log::info('Order created', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'status' => $order->status,
+            ]);
 
             // Create order items with proper validation
             foreach ($cartItems as $cartItem) {
                 $this->createOrderItemFromCart($cartItem, $order);
             }
 
-            // FIXED: Load relationships before reserving inventory
+            // Load relationships before inventory operations
             $order->load(['items.product', 'items.productVariant']);
 
-            // Reserve inventory
-            $this->inventoryService->reserveInventoryForOrder($order);
+            // Only reserve inventory if we're past draft status
+            if ($initialStatus !== 'draft') {
+                $this->inventoryService->reserveInventoryForOrder($order);
+            }
 
             return $order;
         });
     }
 
     /**
-     * Create an order item from cart data with proper validation - UPDATED
+     * Update order status with proper validation and history tracking
+     */
+    public function updateOrderStatus(Order $order, string $newStatus, ?string $notes = null, ?User $user = null): bool
+    {
+        // Enhanced transition rules including draft status
+        $validTransitions = [
+            'draft' => ['pending_payment', 'cancelled'],
+            'pending_payment' => ['payment_failed', 'processing', 'cancelled'],
+            'payment_failed' => ['pending_payment', 'cancelled'],
+            'processing' => ['partially_fulfilled', 'fulfilled', 'cancelled'],
+            'partially_fulfilled' => ['fulfilled', 'cancelled'],
+            'fulfilled' => ['completed', 'delivered'],
+            'delivered' => ['completed'],
+            'completed' => ['refunded'],
+            'cancelled' => [],
+            'refunded' => [],
+        ];
+
+        if (! in_array($newStatus, $validTransitions[$order->status] ?? [])) {
+            throw new \InvalidArgumentException(
+                "Cannot transition order {$order->order_number} from {$order->status} to {$newStatus}"
+            );
+        }
+
+        $updated = $order->updateStatus($newStatus, $notes, $user);
+
+        if ($updated) {
+            // Handle status-specific actions
+            match ($newStatus) {
+                'pending_payment' => $this->handlePendingPaymentStatus($order),
+                'processing' => $this->handleProcessingStatus($order),
+                'fulfilled' => $this->handleFulfilledStatus($order),
+                'cancelled' => $this->handleCancelledStatus($order),
+                'completed' => $this->handleCompletedStatus($order),
+                default => null,
+            };
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Handle transition to pending_payment status
+     */
+    protected function handlePendingPaymentStatus(Order $order): void
+    {
+        // Reserve inventory when moving from draft to pending_payment
+        if ($order->status === 'pending_payment') {
+            $this->inventoryService->reserveInventoryForOrder($order);
+            Log::info('Inventory reserved for pending payment order', ['order_id' => $order->id]);
+        }
+    }
+
+    /**
+     * Calculate order totals from cart items (existing method)
+     */
+    protected function calculateOrderTotals(Collection $cartItems, array $orderData = []): array
+    {
+        $subtotalAmount = 0;
+        $taxRate = $orderData['tax_rate'] ?? 0.20;
+        $taxInclusive = $orderData['tax_inclusive'] ?? true;
+        $shippingAmount = ($orderData['shipping_amount'] ?? 0) * 100;
+        $discountAmount = ($orderData['discount_amount'] ?? 0) * 100;
+
+        foreach ($cartItems as $item) {
+            if (! isset($item['price']) || ! isset($item['quantity'])) {
+                throw new \InvalidArgumentException('Cart item missing price or quantity');
+            }
+
+            $lineTotal = $item['price'] * $item['quantity'];
+            $subtotalAmount += $lineTotal * 100;
+        }
+
+        if ($taxInclusive) {
+            $taxAmount = (int) ($subtotalAmount * $taxRate / (1 + $taxRate));
+        } else {
+            $taxAmount = (int) ($subtotalAmount * $taxRate);
+        }
+
+        $totalAmount = $subtotalAmount + $shippingAmount - $discountAmount;
+        if (! $taxInclusive) {
+            $totalAmount += $taxAmount;
+        }
+
+        $totals = [
+            'subtotal_amount' => $subtotalAmount,
+            'tax_amount' => $taxAmount,
+            'shipping_amount' => $shippingAmount,
+            'discount_amount' => $discountAmount,
+            'total_amount' => $totalAmount,
+        ];
+
+        Log::info('Order totals calculated', $totals);
+
+        return $totals;
+    }
+
+    /**
+     * Create an order item from cart data with proper validation
      */
     protected function createOrderItemFromCart(array $cartItem, Order $order): void
     {
@@ -110,8 +215,7 @@ class OrderService
         $variant = null;
         $item = $product; // Default to product for pricing
 
-        // FIXED: Better variant handling
-        // If there's a variant_id in cart AND it's not null AND the product has variants
+        // Handle variant selection
         if (isset($cartItem['variant_id']) && $cartItem['variant_id'] && $product->hasVariants()) {
             $variant = $product->variants->firstWhere('id', $cartItem['variant_id']);
             if (! $variant) {
@@ -119,10 +223,8 @@ class OrderService
             }
             $item = $variant; // Use variant for pricing
         } elseif ($product->hasVariants() && (! isset($cartItem['variant_id']) || ! $cartItem['variant_id'])) {
-            // Product has variants but no variant selected - this shouldn't happen after cart validation
             throw new \InvalidArgumentException("Product {$product->name} requires a variant selection");
         }
-        // If product doesn't have variants, we use the product itself (simple product)
 
         // Prepare variant attributes for storage
         $variantAttributes = null;
@@ -157,87 +259,10 @@ class OrderService
             'order_item_id' => $orderItem->id,
             'product_id' => $product->id,
             'variant_id' => $variant?->id,
-            'is_simple_product' => ! $product->hasVariants(),
             'quantity' => $cartItem['quantity'],
             'unit_price' => $orderItem->unit_price,
             'line_total' => $orderItem->line_total,
         ]);
-    }
-
-    /**
-     * Calculate order totals from cart items
-     */
-    protected function calculateOrderTotals(Collection $cartItems, array $orderData = []): array
-    {
-        $subtotalAmount = 0;
-        $taxRate = $orderData['tax_rate'] ?? 0.20;
-        $taxInclusive = $orderData['tax_inclusive'] ?? true;
-        $shippingAmount = ($orderData['shipping_amount'] ?? 0) * 100; // Convert to pence
-        $discountAmount = ($orderData['discount_amount'] ?? 0) * 100; // Convert to pence
-
-        foreach ($cartItems as $item) {
-            // Validate item has required fields
-            if (! isset($item['price']) || ! isset($item['quantity'])) {
-                throw new \InvalidArgumentException('Cart item missing price or quantity');
-            }
-
-            $lineTotal = $item['price'] * $item['quantity'];
-            $subtotalAmount += $lineTotal * 100; // Convert to pence
-        }
-
-        // Calculate tax
-        if ($taxInclusive) {
-            // Tax is already included in prices
-            $taxAmount = (int) ($subtotalAmount * $taxRate / (1 + $taxRate));
-        } else {
-            // Tax needs to be added
-            $taxAmount = (int) ($subtotalAmount * $taxRate);
-        }
-
-        $totalAmount = $subtotalAmount + $shippingAmount - $discountAmount;
-        if (! $taxInclusive) {
-            $totalAmount += $taxAmount;
-        }
-
-        $totals = [
-            'subtotal_amount' => $subtotalAmount,
-            'tax_amount' => $taxAmount,
-            'shipping_amount' => $shippingAmount,
-            'discount_amount' => $discountAmount,
-            'total_amount' => $totalAmount,
-        ];
-
-        Log::info('Order totals calculated', $totals);
-
-        return $totals;
-    }
-
-    /**
-     * Update order status with proper validation and history tracking
-     */
-    public function updateOrderStatus(Order $order, string $newStatus, ?string $notes = null, ?User $user = null): bool
-    {
-        if (! $order->canTransitionTo($newStatus)) {
-            throw new \InvalidArgumentException("Cannot transition order {$order->order_number} from {$order->status} to {$newStatus}");
-        }
-
-        $updated = $order->updateStatus($newStatus, $notes, $user);
-
-        if ($updated) {
-            // Handle status-specific actions
-            match ($newStatus) {
-                'processing' => $this->handleProcessingStatus($order),
-                'fulfilled' => $this->handleFulfilledStatus($order),
-                'cancelled' => $this->handleCancelledStatus($order),
-                'completed' => $this->handleCompletedStatus($order),
-                default => null,
-            };
-
-            // TODO: Dispatch events for notifications
-            // event(new OrderStatusUpdated($order, $newStatus));
-        }
-
-        return $updated;
     }
 
     /**
@@ -250,12 +275,13 @@ class OrderService
         }
 
         return DB::transaction(function () use ($order, $reason, $user) {
-            // Release reserved inventory
-            $this->inventoryService->releaseReservedInventory($order);
+            // Release reserved inventory (only if inventory was reserved)
+            if (in_array($order->status, ['pending_payment', 'processing'])) {
+                $this->inventoryService->releaseReservedInventory($order);
+            }
 
             // Handle payment cancellation if needed
             if ($order->isPaid()) {
-                // TODO: Handle refund logic
                 $this->paymentService->refundPayment($order->stripe_payment_intent_id, $order->total_amount);
             }
 
@@ -348,27 +374,21 @@ class OrderService
     protected function handleProcessingStatus(Order $order): void
     {
         // Order is now being processed, inventory should already be reserved
-        // TODO: Send processing notification to customer
         Log::info('Order processing status handled', ['order_id' => $order->id]);
     }
 
     protected function handleFulfilledStatus(Order $order): void
     {
-        // TODO: Send shipping notification to customer
-        // TODO: Generate shipping labels if needed
         Log::info('Order fulfilled status handled', ['order_id' => $order->id]);
     }
 
     protected function handleCancelledStatus(Order $order): void
     {
-        // TODO: Send cancellation notification to customer
         Log::info('Order cancelled status handled', ['order_id' => $order->id]);
     }
 
     protected function handleCompletedStatus(Order $order): void
     {
-        // TODO: Send completion notification to customer
-        // TODO: Request review/feedback
         Log::info('Order completed status handled', ['order_id' => $order->id]);
     }
 }

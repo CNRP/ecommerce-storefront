@@ -8,10 +8,20 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', config('app.name', 'E-commerce Store'))</title>
 
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+
+    <!-- Styles -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
+    <!-- Alpine.js -->
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
+    <!-- Custom Styles -->
     <style>
         [x-cloak] {
             display: none !important;
@@ -23,138 +33,100 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
     </style>
+
+    <!-- Additional Head Content -->
+    @stack('head')
 </head>
 
-<body class="bg-gray-50" x-data="{ cartOpen: false }">
-    <!-- Toast Notification - Bottom Center - Fixed Hidden State -->
+<body class="bg-gray-50 min-h-screen flex flex-col" x-data="{ cartOpen: false, mobileMenuOpen: false }">
+    <!-- Toast Notification System -->
     <div id="toast"
         class="fixed bottom-4 left-1/2 transform -translate-x-1/2 translate-y-32 z-50 transition-all duration-300 ease-in-out">
         <div class="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max">
             <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
             </svg>
-            <span id="toast-message">Item added to cart!</span>
+            <span id="toast-message">Success!</span>
         </div>
     </div>
 
-    <!-- Header - Completely Fixed -->
-    <header class="bg-white shadow-sm border-b border-gray-300 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-
-                <!-- Logo -->
-                <div class="flex-shrink-0">
-                    <a href="{{ route('home') }}"
-                        class="text-2xl font-bold text-gray-900 hover:text-gray-700 transition-colors">
-                        {{ config('app.name', 'Store') }}
-                    </a>
-                </div>
-
-                <!-- Desktop Navigation -->
-                <nav class="hidden md:flex items-center space-x-8">
-                    <a href="{{ route('home') }}"
-                        class="text-gray-700 hover:text-blue-600 transition-colors {{ request()->routeIs('home') ? 'text-blue-600 font-medium' : '' }}">
-                        Home
-                    </a>
-                    <a href="{{ route('products.index') }}"
-                        class="text-gray-700 hover:text-blue-600 transition-colors {{ request()->routeIs('products.*') ? 'text-blue-600 font-medium' : '' }}">
-                        Products
-                    </a>
-
-                </nav>
-
-                <!-- Search Bar -->
-                <div class="flex-1 max-w-lg mx-4 lg:mx-8">
-                    <form action="{{ route('products.index') }}" method="GET" class="relative">
-                        <input type="text" name="search" value="{{ request('search') }}"
-                            placeholder="Search products..."
-                            class="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors">
-                        <button type="submit"
-                            class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Cart Icon - Fixed positioning -->
-                <div class="flex-shrink-0">
-                    <button @click="cartOpen = true"
-                        class="relative p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">
-                        <!-- Proper Shopping Cart SVG -->
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l-1 7H6L5 9z"></path>
-                        </svg>
-
-                        <!-- Cart Counter Badge - Better positioning -->
-                        <span id="cart-count"
-                            class="absolute top-0 right-0 bg-blue-600 text-white text-xs font-medium rounded-full h-5 w-5 flex items-center justify-center transform translate-x-1 -translate-y-1">
-                            {{ app(\App\Services\CartService::class)->getItemCount() }}
-                        </span>
-                    </button>
-                </div>
-
+    <!-- Success/Error Messages -->
+    @if (session('success'))
+        <div class="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg"
+            x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)">
+            <div class="flex items-center space-x-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>{{ session('success') }}</span>
             </div>
         </div>
-    </header>
+    @endif
+
+    @if (session('error'))
+        <div class="fixed top-4 right-4 z-50 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg"
+            x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)">
+            <div class="flex items-center space-x-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+                <span>{{ session('error') }}</span>
+            </div>
+        </div>
+    @endif
+
+    <!-- Navigation -->
+    @include('components.navigation.main')
 
     <!-- Main Content -->
-    <main>
+    <main class="flex-grow">
         @yield('content')
     </main>
 
     <!-- Footer -->
-    <footer class="bg-gray-900 text-white mt-auto">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">{{ config('app.name') }}</h3>
-                    <p class="text-gray-300">Your trusted online store for quality products.</p>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">Quick Links</h3>
-                    <ul class="space-y-2 text-gray-300">
-                        <li><a href="{{ route('home') }}" class="hover:text-white transition-colors">Home</a></li>
-                        <li><a href="{{ route('products.index') }}"
-                                class="hover:text-white transition-colors">Products</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">Categories</h3>
-                    <ul class="space-y-2 text-gray-300">
-                        @foreach (\App\Models\Product\Category::active()->root()->limit(5)->get() as $category)
-                            <li><a href="{{ route('categories.show', $category->slug) }}"
-                                    class="hover:text-white transition-colors">{{ $category->name }}</a></li>
-                        @endforeach
-                    </ul>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">Contact</h3>
-                    <p class="text-gray-300">Email: info@example.com</p>
-                    <p class="text-gray-300">Phone: (555) 123-4567</p>
-                </div>
-            </div>
-            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-300">
-                <p>&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
+    @include('components.footer')
 
     <!-- Cart Sidebar -->
     @include('frontend.cart.sidebar')
 
     <!-- JavaScript -->
     <script>
-        // CSRF token setup
+        // Global JavaScript Configuration
         window.Laravel = {
-            csrfToken: '{{ csrf_token() }}'
+            csrfToken: '{{ csrf_token() }}',
+            routes: {
+                cartAdd: '{{ route('cart.add') }}',
+                cartUpdate: '{{ route('cart.update', ':key') }}',
+                cartRemove: '{{ route('cart.remove', ':key') }}'
+            }
         };
 
-        // Toast notification system - Fixed for complete hiding
+        // Toast Notification System
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toast-message');
@@ -164,61 +136,68 @@
             toastMessage.textContent = message;
 
             // Update styling based on type
-            if (type === 'success') {
-                toastContainer.className =
-                    'bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max';
-            } else if (type === 'error') {
-                toastContainer.className =
-                    'bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max';
-            } else {
-                toastContainer.className =
-                    'bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max';
+            const baseClasses = 'px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-max';
+
+            switch (type) {
+                case 'success':
+                    toastContainer.className = `bg-green-500 text-white ${baseClasses}`;
+                    break;
+                case 'error':
+                    toastContainer.className = `bg-red-500 text-white ${baseClasses}`;
+                    break;
+                case 'warning':
+                    toastContainer.className = `bg-yellow-500 text-white ${baseClasses}`;
+                    break;
+                case 'info':
+                    toastContainer.className = `bg-blue-500 text-white ${baseClasses}`;
+                    break;
+                default:
+                    toastContainer.className = `bg-gray-500 text-white ${baseClasses}`;
             }
 
-            // Show toast - slide up from completely hidden
+            // Show toast
             toast.classList.remove('translate-y-32');
             toast.classList.add('translate-y-0');
 
-            // Hide toast after 3 seconds - move completely off screen
+            // Hide toast after 3 seconds
             setTimeout(() => {
                 toast.classList.remove('translate-y-0');
                 toast.classList.add('translate-y-32');
             }, 3000);
         }
 
-        // Fixed add to cart function
-        function addToCart(productId, variantId = null) {
-            // Get the button that was clicked
-            const button = event.target;
-            const originalText = button.textContent;
+        // Enhanced Add to Cart Function
+        function addToCart(productId, variantId = null, quantity = 1) {
+            const button = event?.target;
+            let originalText = '';
 
-            // Show loading state
-            button.textContent = 'Adding...';
-            button.disabled = true;
-            button.classList.add('opacity-75');
+            if (button) {
+                originalText = button.textContent;
+                button.textContent = 'Adding...';
+                button.disabled = true;
+                button.classList.add('opacity-75');
+            }
 
-            // Debug log
             console.log('Adding to cart:', {
                 productId,
-                variantId
+                variantId,
+                quantity
             });
 
-            // Make the API request
-            fetch('{{ route('cart.add') }}', {
+            fetch(window.Laravel.routes.cartAdd, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
                         'Accept': 'application/json'
                     },
                     body: JSON.stringify({
                         product_id: productId,
                         variant_id: variantId,
-                        quantity: 1
+                        quantity: quantity
                     })
                 })
                 .then(response => {
-                    console.log('Response status:', response.status);
                     if (!response.ok) {
                         return response.text().then(text => {
                             console.error('Error response:', text);
@@ -229,6 +208,7 @@
                 })
                 .then(data => {
                     console.log('Cart response:', data);
+
                     if (data.success) {
                         // Update cart count
                         const cartCount = document.getElementById('cart-count');
@@ -240,12 +220,10 @@
                             setTimeout(() => cartCount.classList.remove('animate-bounce'), 1000);
                         }
 
-                        // Show success toast
-                        showToast('Item added to cart!', 'success');
-
+                        // Show success message
+                        showToast(`Added ${quantity} item${quantity > 1 ? 's' : ''} to cart!`, 'success');
                     } else {
-                        console.error('Cart operation failed:', data);
-                        showToast(data.message || 'Failed to add item to cart', 'error');
+                        throw new Error(data.message || 'Failed to add item to cart');
                     }
                 })
                 .catch(error => {
@@ -254,17 +232,127 @@
                 })
                 .finally(() => {
                     // Reset button state
-                    button.textContent = originalText;
-                    button.disabled = false;
-                    button.classList.remove('opacity-75');
+                    if (button) {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                        button.classList.remove('opacity-75');
+                    }
                 });
         }
 
-        // Initialize cart count on page load
+        // Update Cart Quantity
+        function updateCartQuantity(key, quantity) {
+            if (quantity < 1) {
+                removeFromCart(key);
+                return;
+            }
+
+            const url = window.Laravel.routes.cartUpdate.replace(':key', key);
+
+            fetch(url, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        quantity: quantity
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update cart count and total
+                        const cartCount = document.getElementById('cart-count');
+                        if (cartCount) {
+                            cartCount.textContent = data.cart_count;
+                        }
+
+                        // Reload page to update cart display
+                        location.reload();
+                    } else {
+                        showToast('Error updating cart', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Update cart error:', error);
+                    showToast('Error updating cart', 'error');
+                });
+        }
+
+        // Remove from Cart
+        function removeFromCart(key) {
+            const url = window.Laravel.routes.cartRemove.replace(':key', key);
+
+            fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': window.Laravel.csrfToken,
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update cart count
+                        const cartCount = document.getElementById('cart-count');
+                        if (cartCount) {
+                            cartCount.textContent = data.cart_count;
+                        }
+
+                        showToast('Item removed from cart', 'info');
+
+                        // Reload page to update cart display
+                        location.reload();
+                    } else {
+                        showToast('Error removing item', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Remove from cart error:', error);
+                    showToast('Error removing item', 'error');
+                });
+        }
+
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Frontend layout loaded successfully');
+
+            // Close mobile menu when clicking outside
+            document.addEventListener('click', function(e) {
+                const mobileMenu = document.querySelector('[x-data]').__x;
+                if (mobileMenu && mobileMenu.$data.mobileMenuOpen) {
+                    const nav = document.querySelector('header nav');
+                    if (!nav.contains(e.target)) {
+                        mobileMenu.$data.mobileMenuOpen = false;
+                    }
+                }
+            });
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                // Close cart with Escape key
+                if (e.key === 'Escape') {
+                    const appData = document.querySelector('[x-data]').__x;
+                    if (appData) {
+                        appData.$data.cartOpen = false;
+                        appData.$data.mobileMenuOpen = false;
+                    }
+                }
+            });
+        });
+
+        // Performance monitoring
+        window.addEventListener('load', function() {
+            const loadTime = window.performance.timing.domContentLoadedEventEnd - window.performance.timing
+                .navigationStart;
+            console.log(`Page loaded in ${loadTime}ms`);
         });
     </script>
+
+    <!-- Additional Scripts -->
+    @stack('scripts')
 </body>
 
 </html>

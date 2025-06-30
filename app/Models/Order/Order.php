@@ -15,6 +15,40 @@ use Illuminate\Support\Str;
 
 class Order extends Model
 {
+    // Define valid order statuses as constants for better maintainability
+    public const STATUS_DRAFT = 'draft';
+
+    public const STATUS_PENDING_PAYMENT = 'pending_payment';
+
+    public const STATUS_PAYMENT_FAILED = 'payment_failed';
+
+    public const STATUS_PROCESSING = 'processing';
+
+    public const STATUS_PARTIALLY_FULFILLED = 'partially_fulfilled';
+
+    public const STATUS_FULFILLED = 'fulfilled';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_REFUNDED = 'refunded';
+
+    // Define valid payment statuses
+    public const PAYMENT_STATUS_PENDING = 'pending';
+
+    public const PAYMENT_STATUS_PROCESSING = 'processing';
+
+    public const PAYMENT_STATUS_REQUIRES_ACTION = 'requires_action';
+
+    public const PAYMENT_STATUS_REQUIRES_PAYMENT_METHOD = 'requires_payment_method';
+
+    public const PAYMENT_STATUS_SUCCEEDED = 'succeeded';
+
+    public const PAYMENT_STATUS_FAILED = 'failed';
+
+    public const PAYMENT_STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'order_number',
         'customer_id',
@@ -92,14 +126,19 @@ class Order extends Model
     }
 
     // Scopes
+    public function scopeDraft($query)
+    {
+        return $query->where('status', self::STATUS_DRAFT);
+    }
+
     public function scopePendingPayment($query)
     {
-        return $query->where('status', 'pending_payment');
+        return $query->where('status', self::STATUS_PENDING_PAYMENT);
     }
 
     public function scopeRequiresProcessing($query)
     {
-        return $query->where('status', 'processing');
+        return $query->where('status', self::STATUS_PROCESSING);
     }
 
     public function scopeForCustomer($query, Customer $customer)
@@ -142,14 +181,15 @@ class Order extends Model
     public function canTransitionTo(string $newStatus): bool
     {
         $validTransitions = [
-            'pending_payment' => ['payment_failed', 'processing', 'cancelled'],
-            'payment_failed' => ['pending_payment', 'cancelled'],
-            'processing' => ['partially_fulfilled', 'fulfilled', 'cancelled'],
-            'partially_fulfilled' => ['fulfilled', 'cancelled'],
-            'fulfilled' => ['completed'],
-            'completed' => ['refunded'],
-            'cancelled' => [],
-            'refunded' => [],
+            self::STATUS_DRAFT => [self::STATUS_PENDING_PAYMENT, self::STATUS_CANCELLED],
+            self::STATUS_PENDING_PAYMENT => [self::STATUS_PAYMENT_FAILED, self::STATUS_PROCESSING, self::STATUS_CANCELLED],
+            self::STATUS_PAYMENT_FAILED => [self::STATUS_PENDING_PAYMENT, self::STATUS_CANCELLED],
+            self::STATUS_PROCESSING => [self::STATUS_PARTIALLY_FULFILLED, self::STATUS_FULFILLED, self::STATUS_CANCELLED],
+            self::STATUS_PARTIALLY_FULFILLED => [self::STATUS_FULFILLED, self::STATUS_CANCELLED],
+            self::STATUS_FULFILLED => [self::STATUS_COMPLETED],
+            self::STATUS_COMPLETED => [self::STATUS_REFUNDED],
+            self::STATUS_CANCELLED => [],
+            self::STATUS_REFUNDED => [],
         ];
 
         return in_array($newStatus, $validTransitions[$this->status] ?? []);
@@ -167,10 +207,10 @@ class Order extends Model
         // Set status-specific timestamps
         $now = now();
         match ($newStatus) {
-            'payment_failed', 'cancelled' => $this->cancelled_at = $now,
-            'fulfilled' => $this->shipped_at = $now,
+            self::STATUS_PAYMENT_FAILED, self::STATUS_CANCELLED => $this->cancelled_at = $now,
+            self::STATUS_FULFILLED => $this->shipped_at = $now,
             'delivered' => $this->delivered_at = $now,
-            'completed' => $this->completed_at = $now,
+            self::STATUS_COMPLETED => $this->completed_at = $now,
             default => null,
         };
 
@@ -191,22 +231,66 @@ class Order extends Model
     // Payment management
     public function isPaid(): bool
     {
-        return $this->payment_status === 'succeeded' && $this->payment_confirmed_at;
+        return $this->payment_status === self::PAYMENT_STATUS_SUCCEEDED && $this->payment_confirmed_at;
     }
 
     public function requiresPayment(): bool
     {
-        return in_array($this->payment_status, ['pending', 'requires_action', 'requires_payment_method']);
+        return in_array($this->payment_status, [
+            self::PAYMENT_STATUS_PENDING,
+            self::PAYMENT_STATUS_REQUIRES_ACTION,
+            self::PAYMENT_STATUS_REQUIRES_PAYMENT_METHOD,
+        ]);
     }
 
     public function canBeCancelled(): bool
     {
-        return in_array($this->status, ['pending_payment', 'payment_failed', 'processing']);
+        return in_array($this->status, [
+            self::STATUS_DRAFT,
+            self::STATUS_PENDING_PAYMENT,
+            self::STATUS_PAYMENT_FAILED,
+            self::STATUS_PROCESSING,
+        ]);
     }
 
     public function canBeRefunded(): bool
     {
-        return $this->isPaid() && in_array($this->status, ['processing', 'fulfilled', 'completed']);
+        return $this->isPaid() && in_array($this->status, [
+            self::STATUS_PROCESSING,
+            self::STATUS_FULFILLED,
+            self::STATUS_COMPLETED,
+        ]);
+    }
+
+    // Status checking methods
+    public function isDraft(): bool
+    {
+        return $this->status === self::STATUS_DRAFT;
+    }
+
+    public function isPendingPayment(): bool
+    {
+        return $this->status === self::STATUS_PENDING_PAYMENT;
+    }
+
+    public function isProcessing(): bool
+    {
+        return $this->status === self::STATUS_PROCESSING;
+    }
+
+    public function isFulfilled(): bool
+    {
+        return $this->status === self::STATUS_FULFILLED;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === self::STATUS_COMPLETED;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     // Item management
@@ -230,6 +314,35 @@ class Order extends Model
         $fulfilled = $this->getTotalFulfilledItems();
 
         return $fulfilled > 0 && $fulfilled < $this->getTotalItems();
+    }
+
+    // Static methods for getting valid statuses
+    public static function getValidStatuses(): array
+    {
+        return [
+            self::STATUS_DRAFT,
+            self::STATUS_PENDING_PAYMENT,
+            self::STATUS_PAYMENT_FAILED,
+            self::STATUS_PROCESSING,
+            self::STATUS_PARTIALLY_FULFILLED,
+            self::STATUS_FULFILLED,
+            self::STATUS_COMPLETED,
+            self::STATUS_CANCELLED,
+            self::STATUS_REFUNDED,
+        ];
+    }
+
+    public static function getValidPaymentStatuses(): array
+    {
+        return [
+            self::PAYMENT_STATUS_PENDING,
+            self::PAYMENT_STATUS_PROCESSING,
+            self::PAYMENT_STATUS_REQUIRES_ACTION,
+            self::PAYMENT_STATUS_REQUIRES_PAYMENT_METHOD,
+            self::PAYMENT_STATUS_SUCCEEDED,
+            self::PAYMENT_STATUS_FAILED,
+            self::PAYMENT_STATUS_CANCELLED,
+        ];
     }
 
     // Static factory methods
@@ -258,6 +371,11 @@ class Order extends Model
 
             if (! $order->guest_token) {
                 $order->guest_token = self::generateGuestToken();
+            }
+
+            // Set default status if not provided
+            if (! $order->status) {
+                $order->status = self::STATUS_DRAFT;
             }
         });
     }

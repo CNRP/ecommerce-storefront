@@ -1,6 +1,6 @@
 <?php
 
-// app/Http/Controllers/Api/CheckoutController.php
+// app/Http/Controllers/Api/CheckoutController.php - Updated
 
 namespace App\Http\Controllers\Api;
 
@@ -10,6 +10,7 @@ use App\Services\CheckoutService;
 use App\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class CheckoutController extends Controller
 {
@@ -19,70 +20,70 @@ class CheckoutController extends Controller
     ) {}
 
     /**
-     * Initialize checkout process (AJAX)
+     * Initialize checkout process with enhanced validation
      */
     public function initialize(Request $request): JsonResponse
     {
         try {
-            // Log the incoming request
-            \Log::info('Checkout initialize request', [
+            Log::info('Checkout initialize request', [
                 'data' => $request->all(),
-                'headers' => $request->headers->all(),
+                'user' => auth()->user()?->id,
             ]);
 
             $validated = $request->validate([
+                // Customer information
                 'customer.first_name' => 'required|string|max:255',
                 'customer.last_name' => 'required|string|max:255',
                 'customer.email' => 'required|email|max:255',
                 'customer.phone' => 'nullable|string|max:20',
+
+                // Account creation (for guests)
+                'create_account' => 'boolean',
+                'password' => 'nullable|string|min:8|required_if:create_account,true',
+
+                // Billing address
                 'billing_address.first_name' => 'required|string|max:255',
                 'billing_address.last_name' => 'required|string|max:255',
                 'billing_address.company' => 'nullable|string|max:255',
                 'billing_address.address_line_1' => 'required|string|max:255',
                 'billing_address.address_line_2' => 'nullable|string|max:255',
                 'billing_address.city' => 'required|string|max:255',
-                'billing_address.state_county' => 'required|string|max:255',
+                'billing_address.state_county' => 'required|string|min:2|max:255', // Ensure minimum length
                 'billing_address.postal_code' => 'required|string|max:20',
                 'billing_address.country' => 'required|string|size:2',
-                'shipping_address.first_name' => 'required|string|max:255',
-                'shipping_address.last_name' => 'required|string|max:255',
+
+                // Shipping address handling
+                'same_as_billing' => 'boolean',
+                'shipping_address.first_name' => 'required_if:same_as_billing,false|string|max:255',
+                'shipping_address.last_name' => 'required_if:same_as_billing,false|string|max:255',
                 'shipping_address.company' => 'nullable|string|max:255',
-                'shipping_address.address_line_1' => 'required|string|max:255',
+                'shipping_address.address_line_1' => 'required_if:same_as_billing,false|string|max:255',
                 'shipping_address.address_line_2' => 'nullable|string|max:255',
-                'shipping_address.city' => 'required|string|max:255',
-                'shipping_address.state_county' => 'required|string|max:255',
-                'shipping_address.postal_code' => 'required|string|max:20',
-                'shipping_address.country' => 'required|string|size:2',
+                'shipping_address.city' => 'required_if:same_as_billing,false|string|max:255',
+                'shipping_address.state_county' => 'required_if:same_as_billing,false|string|min:2|max:255',
+                'shipping_address.postal_code' => 'required_if:same_as_billing,false|string|max:20',
+                'shipping_address.country' => 'required_if:same_as_billing,false|string|size:2',
+
+                // Order notes
                 'customer_notes' => 'nullable|string|max:1000',
             ]);
 
-            \Log::info('Validation passed', ['validated' => $validated]);
-
-            // Test if services are available
-            if (! $this->checkoutService) {
-                \Log::error('CheckoutService not available');
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Checkout service not available',
-                ], 500);
+            // Ensure shipping address is properly set
+            if ($validated['same_as_billing'] ?? false) {
+                $validated['shipping_address'] = $validated['billing_address'];
             }
 
-            if (! $this->paymentService) {
-                \Log::error('PaymentService not available');
+            Log::info('Validation passed', ['validated' => $validated]);
 
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment service not available',
-                ], 500);
-            }
-
-            // Try the actual initialization
             $result = $this->checkoutService->initializeCheckout($validated);
 
-            \Log::info('Checkout initialized successfully', ['order_id' => $result['order']->id]);
+            Log::info('Checkout initialized successfully', [
+                'order_id' => $result['order']->id,
+                'customer_created' => $result['customer_created'],
+                'user_created' => $result['user_created'] ?? false,
+            ]);
 
-            return response()->json([
+            $response = [
                 'success' => true,
                 'order_id' => $result['order']->id,
                 'client_secret' => $result['client_secret'],
@@ -91,10 +92,20 @@ class CheckoutController extends Controller
                     'email' => $result['customer']->email,
                     'name' => $result['customer']->full_name,
                 ],
-            ]);
+            ];
+
+            // Include account creation info if relevant
+            if ($result['user_created'] ?? false) {
+                $response['account_created'] = true;
+                $response['message'] = 'Account created successfully! You are now logged in.';
+            } elseif ($result['customer_created'] ?? false) {
+                $response['customer_created'] = true;
+            }
+
+            return response()->json($response);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            \Log::error('Validation failed', ['errors' => $e->errors()]);
+            Log::error('Validation failed', ['errors' => $e->errors()]);
 
             return response()->json([
                 'success' => false,
@@ -103,7 +114,7 @@ class CheckoutController extends Controller
             ], 422);
 
         } catch (\Exception $e) {
-            \Log::error('Checkout initialization failed', [
+            Log::error('Checkout initialization failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -116,7 +127,7 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Complete checkout after payment confirmation (AJAX)
+     * Complete checkout after payment confirmation
      */
     public function complete(Request $request): JsonResponse
     {
@@ -138,7 +149,8 @@ class CheckoutController extends Controller
                 ], 400);
             }
 
-            $result = $this->checkoutService->completeCheckout($order);
+            // Use the new confirmPayment method instead of completeCheckout
+            $result = $this->checkoutService->confirmPayment($order);
 
             return response()->json([
                 'success' => true,
@@ -155,6 +167,11 @@ class CheckoutController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Checkout completion failed', [
+                'error' => $e->getMessage(),
+                'order_id' => $validated['order_id'] ?? null,
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -163,7 +180,7 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Handle checkout errors (AJAX)
+     * Handle checkout errors
      */
     public function error(Request $request): JsonResponse
     {
@@ -190,7 +207,7 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Get checkout summary (AJAX)
+     * Get checkout summary
      */
     public function summary(): JsonResponse
     {

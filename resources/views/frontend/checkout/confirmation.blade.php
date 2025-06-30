@@ -19,7 +19,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <!-- Order Details -->
             <div class="lg:col-span-2">
-                <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Details</h2>
 
                     <div class="grid grid-cols-2 gap-4 text-sm">
@@ -46,7 +46,7 @@
                 </div>
 
                 <!-- Order Items -->
-                <div class="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Items</h2>
 
                     <div class="space-y-4">
@@ -95,7 +95,7 @@
                 <!-- Addresses -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Billing Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Billing Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -115,7 +115,7 @@
                     </div>
 
                     <!-- Shipping Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-300  p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Shipping Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -138,7 +138,7 @@
 
             <!-- Order Summary -->
             <div class="lg:col-span-1">
-                <div class="bg-white rounded-lg shadow-sm border p-6 sticky top-24">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 sticky top-24">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">Order Summary</h2>
 
                     <div class="space-y-3 text-sm">
@@ -160,7 +160,7 @@
                                 <span>-{{ $order->getDiscountMoney()->format() }}</span>
                             </div>
                         @endif
-                        <div class="border-t pt-3 flex justify-between font-medium text-lg">
+                        <div class="border-t border-gray-300  pt-3 flex justify-between font-medium text-lg">
                             <span>Total</span>
                             <span>{{ $order->getTotalMoney()->format() }}</span>
                         </div>
@@ -179,7 +179,7 @@
                     </div>
 
                     <!-- Contact Information -->
-                    <div class="mt-6 pt-6 border-t text-center">
+                    <div class="mt-6 pt-6 border-t border-gray-300  text-center">
                         <h3 class="text-sm font-medium text-gray-900 mb-2">Need Help?</h3>
                         <p class="text-sm text-gray-600 mb-3">
                             We'll send you shipping and tracking information via email to

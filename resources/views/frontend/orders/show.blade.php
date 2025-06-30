@@ -6,7 +6,7 @@
 @section('content')
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Order Header -->
-        <div class="bg-white rounded-lg shadow-sm border p-6 mb-8">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-300 p-6 mb-8">
             <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Order {{ $order->order_number }}</h1>
@@ -145,7 +145,7 @@
                 @endif
 
                 <!-- Order Items -->
-                <div class="bg-white rounded-lg shadow-sm border p-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-300  p-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-6">Order Items</h2>
 
                     <div class="space-y-6">
@@ -226,7 +226,7 @@
                 <!-- Addresses -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Billing Address -->
-                    <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <div class="bg-white rounded-lg shadow-sm border  border-gray-300  p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Billing Address</h3>
                         <div class="text-sm text-gray-600 space-y-1">
                             <p class="font-medium text-gray-900">
@@ -265,7 +265,7 @@
                         </div>
 
                         @if ($order->status === 'fulfilled' && $order->shipped_at)
-                            <div class="mt-4 pt-4 border-t">
+                            <div class="mt-4 pt-4 border-gray-300  border-t">
                                 <p class="text-sm font-medium text-gray-900">Shipping Information</p>
                                 <p class="text-sm text-gray-600">Shipped on {{ $order->shipped_at->format('M j, Y') }}</p>
                                 @if ($order->estimated_delivery_date)

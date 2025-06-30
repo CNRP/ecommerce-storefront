@@ -24,8 +24,8 @@
     },
     "include": [
       "app/Models/**",
-    "app/Http/Controllers/**",
-    "app/Services/**",
+      "app/Http/Controllers/**",
+      "app/Services/**",
       "resources/views/frontend/**",
       "database/seeders/**"
     ],

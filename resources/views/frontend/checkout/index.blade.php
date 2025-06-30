@@ -1,4 +1,4 @@
-{{-- resources/views/frontend/checkout/index.blade.php --}}
+{{-- resources/views/frontend/checkout/index.blade.php - Updated --}}
 @extends('layouts.frontend')
 
 @section('title', 'Checkout - ' . config('app.name'))
@@ -12,6 +12,33 @@
                     <h1 class="text-2xl font-bold text-gray-900 mb-6">Checkout</h1>
 
                     <form id="checkout-form" x-data="checkoutForm()">
+                        <!-- Guest/Login Options (only for non-authenticated users) -->
+                        @guest
+                            <div class="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                <h2 class="text-lg font-medium text-gray-900 mb-4">Checkout Options</h2>
+                                <div class="space-y-3">
+                                    <label class="flex items-center">
+                                        <input type="radio" x-model="checkoutType" value="guest"
+                                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="ml-2 text-sm text-gray-700">Continue as guest</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" x-model="checkoutType" value="create_account"
+                                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="ml-2 text-sm text-gray-700">Create an account for faster future
+                                            checkouts</span>
+                                    </label>
+                                    <div class="text-center">
+                                        <span class="text-sm text-gray-500">Already have an account? </span>
+                                        <a href="{{ route('login') }}"
+                                            class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                                            Sign in
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        @endguest
+
                         <!-- Customer Information -->
                         <div class="mb-8">
                             <h2 class="text-lg font-medium text-gray-900 mb-4">Contact Information</h2>
@@ -38,6 +65,16 @@
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
                             </div>
+
+                            <!-- Password field for account creation -->
+                            @guest
+                                <div x-show="checkoutType === 'create_account'" class="mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                    <input type="password" x-model="password" :required="checkoutType === 'create_account'"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                    <p class="mt-1 text-sm text-gray-500">Minimum 8 characters</p>
+                                </div>
+                            @endguest
                         </div>
 
                         <!-- Billing Address -->
@@ -76,16 +113,18 @@
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">County</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">County/State</label>
                                     <input type="text" x-model="billing_address.state_county" required
+                                        @input="validateStateCounty()"
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                    <p x-show="stateCountyError" x-text="stateCountyError"
+                                        class="mt-1 text-sm text-red-600"></p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Postal Code</label>
                                     <input type="text" x-model="billing_address.postal_code" required
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
-                                <!-- REMOVED: Country field from billing address -->
                             </div>
                         </div>
 
@@ -133,7 +172,7 @@
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">County</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">County/State</label>
                                     <input type="text" x-model="shipping_address.state_county"
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
@@ -142,7 +181,6 @@
                                     <input type="text" x-model="shipping_address.postal_code"
                                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 </div>
-                                <!-- REMOVED: Country field from shipping address -->
                             </div>
                         </div>
 
@@ -171,7 +209,6 @@
                         <div class="mb-8">
                             <h2 class="text-lg font-medium text-gray-900 mb-4">Payment Information</h2>
                             <div id="payment-element" class="p-4 border border-gray-300 rounded-md bg-gray-50">
-                                <!-- Stripe Elements will be mounted here -->
                                 <div class="text-center text-gray-500">
                                     <svg class="mx-auto h-8 w-8 mb-2" fill="none" stroke="currentColor"
                                         viewBox="0 0 24 24">
@@ -286,14 +323,31 @@
     <script>
         function checkoutForm() {
             return {
-                // Form data
+                // Checkout type for guests
+                checkoutType: 'guest',
+                password: '',
+
+                // Form data - with proper null safety
                 customer: {
-                    first_name: '',
-                    last_name: '',
-                    email: '',
-                    phone: ''
+                    first_name: '@auth{{ auth()->user()->customer?->first_name ?? '' }}@endauth',
+                    last_name: '@auth{{ auth()->user()->customer?->last_name ?? '' }}@endauth',
+                    email: '@auth{{ auth()->user()->email ?? '' }}@endauth',
+                    phone: '@auth{{ auth()->user()->customer?->phone ?? '' }}@endauth'
                 },
                 billing_address: {
+                    @auth
+                    @php
+                        $defaultBilling = auth()->user()->customer?->getDefaultBillingAddress();
+                    @endphp
+                    first_name: '{{ $defaultBilling?->first_name ?? '' }}',
+                    last_name: '{{ $defaultBilling?->last_name ?? '' }}',
+                    company: '{{ $defaultBilling?->company ?? '' }}',
+                    address_line_1: '{{ $defaultBilling?->address_line_1 ?? '' }}',
+                    address_line_2: '{{ $defaultBilling?->address_line_2 ?? '' }}',
+                    city: '{{ $defaultBilling?->city ?? '' }}',
+                    state_county: '{{ $defaultBilling?->state_county ?? '' }}',
+                    postal_code: '{{ $defaultBilling?->postal_code ?? '' }}',
+                @else
                     first_name: '',
                     last_name: '',
                     company: '',
@@ -302,9 +356,10 @@
                     city: '',
                     state_county: '',
                     postal_code: '',
-                    country: 'GB' // Fixed to GB
-                },
-                shipping_address: {
+                @endauth
+                country: 'GB'
+            },
+            shipping_address: {
                     first_name: '',
                     last_name: '',
                     company: '',
@@ -313,12 +368,13 @@
                     city: '',
                     state_county: '',
                     postal_code: '',
-                    country: 'GB' // Fixed to GB
+                    country: 'GB'
                 },
                 customer_notes: '',
                 sameAsBilling: true,
                 processing: false,
-                country: 'GB', // Single country field
+                country: 'GB',
+                stateCountyError: '',
 
                 // Stripe
                 stripe: null,
@@ -326,10 +382,9 @@
                 paymentElement: null,
                 clientSecret: null,
                 orderId: null,
-                stripeInitialized: false, // Flag to prevent re-initialization
+                stripeInitialized: false,
 
                 init() {
-
                     this.billing_address.country = this.country;
                     this.shipping_address.country = this.country;
 
@@ -352,7 +407,7 @@
                             clearTimeout(timeoutId);
                             timeoutId = setTimeout(() => {
                                 this.checkFormAndInitializeStripe();
-                            }, 500); // 500ms debounce
+                            }, 500);
                         }
                     };
 
@@ -367,19 +422,24 @@
                 copyBillingToShipping() {
                     if (this.sameAsBilling) {
                         this.shipping_address = {
-                            ...this.billing_address,
-                            country: this.country // Ensure country is copied
+                            ...this.billing_address
                         };
                     }
                 },
 
-                checkFormAndInitializeStripe() {
-                    // Prevent multiple initializations
-                    if (this.stripeInitialized) {
-                        return;
+                validateStateCounty() {
+                    const value = this.billing_address.state_county;
+                    if (value && value.length < 2) {
+                        this.stateCountyError = 'County/State must be at least 2 characters';
+                    } else {
+                        this.stateCountyError = '';
                     }
+                },
 
-                    // Check if basic form fields are filled INCLUDING country
+                checkFormAndInitializeStripe() {
+                    if (this.stripeInitialized) return;
+
+                    // Enhanced validation including state_county length
                     if (this.customer.first_name &&
                         this.customer.last_name &&
                         this.customer.email &&
@@ -387,118 +447,131 @@
                         this.billing_address.address_line_1 &&
                         this.billing_address.city &&
                         this.billing_address.postal_code &&
-                        this.billing_address.state_county && // Added this
-                        this.country) { // Added country validation
+                        this.billing_address.state_county &&
+                        this.billing_address.state_county.length >= 2 &&
+                        this.country) {
 
                         this.initializeStripe();
                     }
                 },
 
                 async initializeStripe() {
-                    // Double check to prevent race conditions
-                    if (this.stripeInitialized) {
-                        return;
-                    }
+                        if (this.stripeInitialized) return;
+                        this.stripeInitialized = true;
 
-                    this.stripeInitialized = true; // Set flag immediately
-
-                    try {
-                        // Initialize checkout
-                        const response = await fetch('{{ route('api.checkout.initialize') }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                    'content')
-                            },
-                            body: JSON.stringify({
+                        try {
+                            const requestData = {
                                 customer: this.customer,
                                 billing_address: this.billing_address,
-                                shipping_address: this.sameAsBilling ? this.billing_address : this
-                                    .shipping_address,
-                                customer_notes: this.customer_notes
-                            })
-                        });
+                                shipping_address: this.sameAsBilling ? this.billing_address : this.shipping_address,
+                                same_as_billing: this.sameAsBilling,
+                                customer_notes: this.customer_notes,
+                                create_account: this.checkoutType === 'create_account',
+                                password: this.checkoutType === 'create_account' ? this.password : null
+                            };
 
-                        const result = await response.json();
+                            console.log('Sending request data:', requestData);
 
-                        if (!result.success) {
-                            throw new Error(result.message);
+                            const response = await fetch('{{ route('api.checkout.initialize') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
+                                        'content'),
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify(requestData)
+                            });
+
+                            const responseText = await response.text();
+                            console.log('Raw response:', responseText.substring(0, 500));
+
+                            if (!response.ok) {
+                                console.error('HTTP Error:', response.status, response.statusText);
+
+                                if (response.status === 422) {
+                                    try {
+                                        const errorResult = JSON.parse(responseText);
+                                        console.error('Validation errors:', errorResult);
+                                        if (errorResult.errors) {
+                                            let errorMessage = 'Validation failed:\n';
+                                            Object.keys(errorResult.errors).forEach(field => {
+                                                errorMessage +=
+                                                    `${field}: ${errorResult.errors[field].join(', ')}\n`;
+                                            });
+                                            throw new Error(errorMessage);
+                                        }
+                                    } catch (parseError) {
+                                        console.error('Could not parse validation error response');
+                                    }
+                                }
+                                throw new Error(`HTTP ${response.status}: Server returned an error`);
+                            }
+
+                            let result;
+                            try {
+                                result = JSON.parse(responseText);
+                            } catch (parseError) {
+                                console.error('JSON parse error:', parseError);
+                                throw new Error('Server returned invalid JSON response');
+                            }
+
+                            console.log('Parsed result:', result);
+
+                            if (!result.success) {
+                                throw new Error(result.message || 'Checkout initialization failed');
+                            }
+
+                            this.clientSecret = result.client_secret;
+                            this.orderId = result.order_id;
+
+                            // Show account creation message if applicable
+                            if (result.account_created) {
+                                showToast(result.message || 'Account created successfully!', 'success');
+                            }
+
+                            // Initialize Stripe
+                            this.stripe = Stripe('{{ config('services.stripe.key') }}');
+                            this.elements = this.stripe.elements({
+                                clientSecret: this.clientSecret
+                            });
+
+                            // Create payment element
+                            this.paymentElement = this.elements.create('payment');
+                            this.paymentElement.mount('#payment-element');
+
+                        } catch (error) {
+                            console.error('Error initializing checkout:', error);
+                            this.stripeInitialized = false; // Reset flag on error
+                            showToast('Error initializing checkout: ' + error.message, 'error');
+                        }
+                    },
+
+                    async processPayment() {
+                        if (!this.stripe || !this.paymentElement) {
+                            showToast('Payment system not ready. Please try again.', 'error');
+                            return;
                         }
 
-                        this.clientSecret = result.client_secret;
-                        this.orderId = result.order_id;
+                        this.processing = true;
 
-                        // Initialize Stripe
-                        this.stripe = Stripe('{{ config('services.stripe.key') }}');
-                        this.elements = this.stripe.elements({
-                            clientSecret: this.clientSecret
-                        });
+                        try {
+                            const {
+                                error
+                            } = await this.stripe.confirmPayment({
+                                elements: this.elements,
+                                confirmParams: {
+                                    return_url: window.location.origin + '/checkout/complete'
+                                },
+                                redirect: 'if_required'
+                            });
 
-                        // Create payment element
-                        this.paymentElement = this.elements.create('payment');
-                        this.paymentElement.mount('#payment-element');
+                            if (error) {
+                                throw error;
+                            }
 
-                    } catch (error) {
-                        console.error('Error initializing checkout:', error);
-                        this.stripeInitialized = false; // Reset flag on error
-                        showToast('Error initializing checkout: ' + error.message, 'error');
-                    }
-                },
-
-                async processPayment() {
-                    if (!this.stripe || !this.paymentElement) {
-                        showToast('Payment system not ready. Please try again.', 'error');
-                        return;
-                    }
-
-                    this.processing = true;
-
-                    try {
-                        const {
-                            error
-                        } = await this.stripe.confirmPayment({
-                            elements: this.elements,
-                            confirmParams: {
-                                return_url: window.location.origin + '/checkout/complete'
-                            },
-                            redirect: 'if_required'
-                        });
-
-                        if (error) {
-                            throw error;
-                        }
-
-                        // Payment succeeded
-                        const completeResponse = await fetch('{{ route('api.checkout.complete') }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                    'content')
-                            },
-                            body: JSON.stringify({
-                                order_id: this.orderId,
-                                payment_intent_id: this.clientSecret.split('_secret_')[0]
-                            })
-                        });
-
-                        const completeResult = await completeResponse.json();
-
-                        if (completeResult.success) {
-                            // Redirect to confirmation page
-                            window.location.href = completeResult.redirect_url;
-                        } else {
-                            throw new Error(completeResult.message);
-                        }
-
-                    } catch (error) {
-                        console.error('Payment error:', error);
-                        showToast('Payment failed: ' + error.message, 'error');
-
-                        // Record error
-                        if (this.orderId) {
-                            fetch('{{ route('api.checkout.error') }}', {
+                            // Payment succeeded
+                            const completeResponse = await fetch('{{ route('api.checkout.complete') }}', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -507,15 +580,43 @@
                                 },
                                 body: JSON.stringify({
                                     order_id: this.orderId,
-                                    error_message: error.message
+                                    payment_intent_id: this.clientSecret.split('_secret_')[0]
                                 })
                             });
+
+                            const completeResult = await completeResponse.json();
+
+                            if (completeResult.success) {
+                                // Redirect to confirmation page
+                                window.location.href = completeResult.redirect_url;
+                            } else {
+                                throw new Error(completeResult.message);
+                            }
+
+                        } catch (error) {
+                            console.error('Payment error:', error);
+                            showToast('Payment failed: ' + error.message, 'error');
+
+                            // Record error
+                            if (this.orderId) {
+                                fetch('{{ route('api.checkout.error') }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                            .getAttribute('content')
+                                    },
+                                    body: JSON.stringify({
+                                        order_id: this.orderId,
+                                        error_message: error.message
+                                    })
+                                });
+                            }
+                        } finally {
+                            this.processing = false;
                         }
-                    } finally {
-                        this.processing = false;
                     }
-                }
-            }
+        }
         }
     </script>
 @endsection
